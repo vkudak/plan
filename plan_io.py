@@ -27,35 +27,40 @@ def calc_T_twilight():
     # sunset =fred.next_setting   (ephem.Sun()) #Sunset
 
     # We relocate the horizon to get twilight times
-    fred.horizon = '-12'  # -6=civil twilight, -12=nautical, -18=astronomical
+    fred.horizon = '-10'  # -6=civil twilight, -12=nautical, -18=astronomical
     # beg_twilight=fred.previous_rising(ephem.Sun(), use_center=True) #Begin civil twilight
     end_twilight = fred.next_setting(ephem.Sun(), use_center=True)  # End civil twilight
     return end_twilight.datetime()
 
-def read_tle(filename):
-    # f = open(filename, 'r')
-    # c = 0
-    # TLE_all = []
-    # TLE = {}
-    # for line in f:
-    #     if c < 3:
-    #         TLE.append(f)
-    #         c = c + 1
-    #     if c == 3
-    #         TLE_all.appnd(TLE)
-    #         c = 0
+
+def read_tle(file_list):
     TLE = []
-    with open(filename, 'r') as infile:
-        lines = []
-        for line in infile:
-            lines.append(line)
-            if len(lines) == 3:
-                lines.append(int(lines[2].split()[1]))
-                TLE.append(lines)
-                lines = []
-        # if len(lines) > 0:
-        #     process(lines)
+    for filename in file_list:
+        with open(filename, 'r') as infile:
+            lines = []
+            for line in infile:
+                lines.append(line)
+                if len(lines) == 3:
+                    NORAD = int(lines[2].split()[1])
+                    epoch = float(lines[1].split()[3])
+                    lines.append(NORAD)
+
+                    #check dublicate
+                    dublic = False
+                    for x in range(0, len(TLE)):
+                        if int(TLE[x][2].split()[1]) == NORAD:
+                            dublic = True
+                            if epoch > float(TLE[x][1].split()[3]):
+                                TLE.pop(x)
+                                # print("deleting N", x)
+                                TLE.append(lines)
+                    if dublic == False:
+                        TLE.append(lines)
+                    # end check
+
+                    lines = []
     return TLE
+
 
 def read_vt(filename):
     f = open(filename, 'r')

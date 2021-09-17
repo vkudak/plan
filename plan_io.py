@@ -123,6 +123,26 @@ def T_to_dec(UTCs):
     return UTC
 
 
+def corr_ha_dec_s(ha, dec):
+    ha_s = "%s" % ha
+    ha_s = ha_s.replace(':', '')
+    dec_s = "%s" % dec
+    dec_s = dec_s.replace(':', '')
+
+    # DEC leading zero correction  -6 -> -06
+    dec2 = float(dec_s)
+    if abs(dec2) < 100000:
+        if dec < 0:
+            dec_s = list(dec_s)
+            dec_s.insert(1, "0")
+        else:
+            dec_s = list(dec_s)
+            dec_s.insert(0, "0")
+        dec_s = "".join(dec_s)
+    if dec2 > 0:
+        dec_s = "+" + dec_s
+    return ha_s, dec_s
+
 def addT(UTCs, dt):
     # dt in sec
     # print addT('010503', 600)

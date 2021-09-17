@@ -32,6 +32,30 @@ def calc_T_twilight():
     end_twilight = fred.next_setting(ephem.Sun(), use_center=True)  # End civil twilight
     return end_twilight.datetime()
 
+def read_tle(filename):
+    # f = open(filename, 'r')
+    # c = 0
+    # TLE_all = []
+    # TLE = {}
+    # for line in f:
+    #     if c < 3:
+    #         TLE.append(f)
+    #         c = c + 1
+    #     if c == 3
+    #         TLE_all.appnd(TLE)
+    #         c = 0
+    TLE = []
+    with open(filename, 'r') as infile:
+        lines = []
+        for line in infile:
+            lines.append(line)
+            if len(lines) == 3:
+                lines.append(int(lines[2].split()[1]))
+                TLE.append(lines)
+                lines = []
+        # if len(lines) > 0:
+        #     process(lines)
+    return TLE
 
 def read_vt(filename):
     f = open(filename, 'r')

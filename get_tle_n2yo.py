@@ -111,11 +111,14 @@ else:
 	os.mkdir('tle')
 	fr = open("tle//tle_ckkp_" + ndate + ".txt", "w")
 
-for sat in list_ckkp:
+from tqdm import tqdm
+
+for sat in tqdm(list_ckkp):
 	try:
 		res = cl.get_tle(sat)
 		fr.write(res[0]["satname"] + "\n")
-		fr.write(res[1] + "\n")
+		ll = res[1].split('\r\n')
+		fr.write(ll[0] + "\n" + ll[1] + "\n")
 	except Exception as e:
 		print('Error while retrieving TLE for ' + str(sat))
 		pass

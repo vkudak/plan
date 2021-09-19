@@ -1,0 +1,3 @@
+pyephem
+n2yo-api
+tqdm

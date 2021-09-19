@@ -2,6 +2,21 @@ import glob, os, sys
 import datetime
 
 
+def fix_checksum(line):
+    """Return a new copy of the TLE `line`, with the correct checksum appended.
+
+    This discards any existing checksum at the end of the line, if a
+    checksum is already present.
+
+    """
+    return line[:68].ljust(68) + str(compute_checksum(line))
+
+
+def compute_checksum(line):
+    """Compute the TLE checksum for the given line."""
+    return sum((int(c) if c.isdigit() else c == '-') for c in line[0:68]) % 10
+
+
 def calc_T_twilight():
     import ephem
     # Make an observer
@@ -46,7 +61,7 @@ def read_tle(file_list):
                     epoch = float(lines[1].split()[3])
                     lines.append(NORAD)
 
-                    #check dublicate
+                    # check dublicate
                     dublic = False
                     for x in range(0, len(TLE)):
                         if int(TLE[x][2].split()[1]) == NORAD:
@@ -106,7 +121,6 @@ def read_va(filename):
     return ephem
 
 
-
 def read_planed_objects(filename):
     obj = []
     f = open(filename, 'r')
@@ -129,6 +143,10 @@ def corr_ha_dec_s(ha, dec):
     ha_s = ha_s.replace(':', '')
     dec_s = "%s" % dec
     dec_s = dec_s.replace(':', '')
+
+    # HA leading zero correction
+    if len(ha_s.split(".")[0]) < 6:
+        ha_s = "0"+"".join(ha_s)
 
     # DEC leading zero correction  -6 -> -06
     dec2 = float(dec_s)

@@ -5,6 +5,7 @@ import ephem
 from plan_io import *
 import glob
 # https://rhodesmill.org/skyfield/earth-satellites.html  ?????
+# https://github.com/brandon-rhodes/python-sgp4  !!!!!!!!
 
 
 class Satellite:
@@ -44,7 +45,8 @@ start_T, end_T = calc_T_twilight()
 obj = read_planed_objects('planed_objects.txt')
 print("Satellites to plan =", len(obj))
 if not os.path.isdir('tle'):
-    print("no TLE files in 'tle' directory")
+    print("Error !!!! No TLE files in 'tle' directory")
+    sys.exit()
 else:
     try:
         tle_file_list = glob.glob('tle//*.txt')
@@ -64,6 +66,10 @@ for sat in obj:
     for tle in TLE:
         if int(sat) == tle[-1]:
             # print(sat)
+
+            tle[1] = fix_checksum(tle[1])  # fix checksum !!!!
+            tle[2] = fix_checksum(tle[2])
+
             geo = ephem.readtle(tle[0], tle[1], tle[2])
             Deren.date = start_T.strftime("%Y/%m/%d %H:%M:%S")  # "2021/09/17 18:00:00" #'2003/3/23 H:M:S'
             geo.compute(Deren)
@@ -75,7 +81,7 @@ for sat in obj:
             #        "HA=", ha, geo.eclipsed )
             geo_list.append(Satellite(sat, HA=ha, TLE=tle, priority=0, geo=geo, block=False))
 
-print("Satellites planned =", len(geo_list) - 1)
+print("Satellites planned =", len(geo_list))
 
 geo_list.sort(key=lambda x: x.HA, reverse=False)  # sort satellites by HA
 
@@ -101,7 +107,7 @@ for ser in range(0, series):
         sat = geo_list[i]
         if not sat.block:
             if (sat == geo_list[0]) and (sat.priority == 0) and (ser > 0):
-                T2 = T1 + datetime.timedelta(0, t_ser + t_move + 45)  # add time for safe move to first sat in ser
+                T2 = T1 + datetime.timedelta(0, t_ser + t_move + 90)  # add time for safe move to first sat in ser
             else:
                 T2 = T1 + datetime.timedelta(0, t_ser + t_move)  # 0 days and N seconds
                 # t_ser + t_move ---> time for frames capture + move telescope to next point

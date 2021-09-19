@@ -31,14 +31,14 @@ t_move = 40
 t_exp = 12.0
 n_frames = 7
 exp_wait = 30 # interval between frames
-t_miz_ser = 3.6*60*60
+# t_miz_ser = 3.6*60*60
 
 t_ser = n_frames * (t_exp + 3 + exp_wait)  # 3 - readout, 
 str_v_plan = str(n_frames) + "x" + str(t_exp) + ":" + str(exp_wait) + " @" 
 
 ndate = datetime.datetime.now().strftime("%Y%m%d")
 f = open('object_' + C + '_' + ndate + '.list', 'w')
-start_T = calc_T_twilight()
+start_T, end_T = calc_T_twilight()
 # start_T = datetime.datetime(year=2021, month=9, day=14, hour=18, minute=0, second=0)
 
 obj = read_planed_objects('planed_objects.txt')
@@ -82,8 +82,9 @@ geo_list.sort(key=lambda x: x.HA, reverse=False)  # sort satellites by HA
 # print(geo_list[-1].NORAD)
 # print start_T
 # start_T = start_T - datetime.timedelta(days=1)  # ----------------------<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-print("start date =")
-print(start_T)
+print("Start date = ", start_T)
+print("End date = ", end_T)
+
 f.write("# Start T = " + str(start_T) + "\n")
 
 print("start...")
@@ -104,49 +105,56 @@ for ser in range(0, series):
             else:
                 T2 = T1 + datetime.timedelta(0, t_ser + t_move)  # 0 days and N seconds
                 # t_ser + t_move ---> time for frames capture + move telescope to next point
+            if T1 > end_T:
+                print("Sunrise, h_sun -10...")
+                f.close()
+                sys.exit()
 
             Deren.date = T1.strftime("%Y/%m/%d %H:%M:%S")
             sat.geo.compute(Deren)
-            ra = sat.geo.ra
-            ha = ephem.hours(Deren.sidereal_time() - sat.geo.ra + ephem.degrees("360.0"))
-            dec = sat.geo.dec
-            eclipsed = sat.geo.eclipsed
+            if (sat.geo.elevation > 10) and (T1 < end_T):
+                ra = sat.geo.ra
+                ha = ephem.hours(Deren.sidereal_time() - sat.geo.ra + ephem.degrees("360.0"))
+                dec = sat.geo.dec
+                eclipsed = sat.geo.eclipsed
 
-            if not eclipsed:
-                ha_s, dec_s = corr_ha_dec_s(ha, dec)
-                mag = "0.00"
-                T1_s = T1.strftime("%H%M%S")
-                T2_s = T2.strftime("%H%M%S")
-                # print("here we are", ha_s)
-                f.write(sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
-                        + str_v_plan + T1_s + '-' + T2_s + '   ' + '# %s \n' % eclipsed)
-                geo_list[i].block = True
-            else:  # eclipsed
+                if not eclipsed:
+                    ha_s, dec_s = corr_ha_dec_s(ha, dec)
+                    mag = "0.00"
+                    T1_s = T1.strftime("%H%M%S")
+                    T2_s = T2.strftime("%H%M%S")
+                    # print("here we are", ha_s)
+                    f.write(sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
+                            + str_v_plan + T1_s + '-' + T2_s + '   ' + '# %s \n' % eclipsed)
+                    geo_list[i].block = True
+                else:  # eclipsed
+                    geo_list[i].priority = geo_list[i].priority + 1
+                    print(sat.NORAD, eclipsed)
+                    x = 1
+                    while eclipsed:
+                        if i + x <= len(geo_list)-1:
+                            sat = geo_list[i+x]
+
+                            sat.geo.compute(Deren)
+                            ra = sat.geo.ra
+                            ha = ephem.hours(Deren.sidereal_time() - sat.geo.ra + ephem.degrees("360.0"))
+                            dec = sat.geo.dec
+                            eclipsed = sat.geo.eclipsed
+                            print(sat.NORAD, eclipsed)
+                        x = x + 1
+
+                    print("changed to", sat.NORAD)
+
+                    ha_s, dec_s = corr_ha_dec_s(ha, dec)
+                    mag = "0.00"
+                    T1_s = T1.strftime("%H%M%S")
+                    T2_s = T2.strftime("%H%M%S")
+                    # print("here we are", ha_s)
+                    f.write(sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
+                            + str_v_plan + T1_s + '-' + T2_s + '   ' + '# %s \n' % eclipsed)
+                    geo_list[i + x - 1].block = True
+            else:
                 geo_list[i].priority = geo_list[i].priority + 1
-                print(sat.NORAD, eclipsed)
-                x = 1
-                while eclipsed:
-                    if i + x <= len(geo_list)-1:
-                        sat = geo_list[i+x]
-
-                        sat.geo.compute(Deren)
-                        ra = sat.geo.ra
-                        ha = ephem.hours(Deren.sidereal_time() - sat.geo.ra + ephem.degrees("360.0"))
-                        dec = sat.geo.dec
-                        eclipsed = sat.geo.eclipsed
-                        print(sat.NORAD, eclipsed)
-                    x = x + 1
-
-                print("changed to", sat.NORAD)
-
-                ha_s, dec_s = corr_ha_dec_s(ha, dec)
-                mag = "0.00"
-                T1_s = T1.strftime("%H%M%S")
-                T2_s = T2.strftime("%H%M%S")
-                # print("here we are", ha_s)
-                f.write(sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
-                        + str_v_plan + T1_s + '-' + T2_s + '   ' + '# %s \n' % eclipsed)
-                geo_list[i + x - 1].block = True
 
         T1 = T2
 

@@ -12,11 +12,11 @@ def calc_T_twilight():
     fred.date = fred.date.datetime().replace(hour=0, minute=0, second=0)  # GET DATE AT hh=0 mm=0 ss=0
 
     # Location of Fredericton, Canada
-    fred.lon = str(22.299167)  # Note that lon should be in string format
-    fred.lat = str(48.631639)  # Note that lat should be in string format
+    fred.lon = str(22.453751)  # Note that lon should be in string format
+    fred.lat = str(48.5635505)  # Note that lat should be in string format
 
     # Elevation of Fredericton, Canada, in metres
-    fred.elev = 205
+    fred.elev = 231
 
     # To get U.S. Naval Astronomical Almanac values, use these settings
     fred.pressure = 0
@@ -30,7 +30,8 @@ def calc_T_twilight():
     fred.horizon = '-10'  # -6=civil twilight, -12=nautical, -18=astronomical
     # beg_twilight=fred.previous_rising(ephem.Sun(), use_center=True) #Begin civil twilight
     end_twilight = fred.next_setting(ephem.Sun(), use_center=True)  # End civil twilight
-    return end_twilight.datetime()
+    start_twilight = fred.next_rising(ephem.Sun(), use_center=True)
+    return end_twilight.datetime(), start_twilight.datetime() + datetime.timedelta(1, 0)
 
 
 def read_tle(file_list):

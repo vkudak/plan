@@ -74,7 +74,6 @@ for sat in obj:
             #       "HA=", ha, geo.eclipsed)
             geo_list.append(Satellite(NORAD=sat, HA=ha, TLE=tle, priority=0, geo=geo, block=False))
 
-print("Satellites planned = %i" % len(geo_list))
 for sat in obj:
     eps = True
     for ge in geo_list:
@@ -83,6 +82,7 @@ for sat in obj:
     if eps:
         print("Warning !!!!  Satellite %s has no TLE data" % sat)
 
+print("Satellites planned = %i" % len(geo_list))
 geo_list.sort(key=lambda x: x.HA, reverse=False)  # sort satellites by HA
 
 # print(geo_list[-1].NORAD)

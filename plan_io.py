@@ -1,5 +1,27 @@
 import glob, os, sys
 import datetime
+import ephem
+
+
+class Satellite:
+    def __init__(self, NORAD, HA, priority, TLE, geo, block):
+        self.NORAD = NORAD
+        self.HA = HA  # HA at the first evening point
+        self.priority = priority
+        self.TLE = TLE
+        self.geo = geo  # pyephem sat object
+        self.block = block
+
+    def calc(self, site):
+        self.geo.compute(site)
+        # ra = self.geo.ra
+        ha_sort = ephem.hours(site.sidereal_time() - self.geo.ra)
+        if ha_sort < 0:
+            ha = ephem.hours(site.sidereal_time() - self.geo.ra + ephem.degrees("360.0"))  # -01 to 23 hour
+        else:
+            ha = ha_sort
+        self.HA = ha_sort
+        return ha, ha_sort
 
 
 def fix_checksum(line):

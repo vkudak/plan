@@ -1,7 +1,7 @@
 # import numpy as np
-import glob, os, sys
-import datetime
-import ephem
+# import glob, os, sys
+# import datetime
+# import ephem
 from plan_io import *
 import glob
 # https://rhodesmill.org/skyfield/earth-satellites.html  ?????
@@ -16,12 +16,13 @@ import glob
 # print calc_T_twilight()
 # print "--------------------------"
 
+debug = False
 C = 'HA'  # HA
 series = 3
 t_move = 40
 t_exp = 12.0
 n_frames = 7
-exp_wait = 30 # interval between frames
+exp_wait = 30  # interval between frames
 # t_miz_ser = 3.6*60*60
 
 t_ser = n_frames * (t_exp + 3 + exp_wait)  # 3 - readout, 
@@ -72,7 +73,8 @@ for sat in obj:
             #       ', ST=', Deren.sidereal_time(),
             #       "RA=", geo.ra,
             #       "HA=", ha, geo.eclipsed)
-            geo_list.append(Satellite(NORAD=sat, HA=ha, TLE=tle, priority=0, geo=geo, block=False))
+            geo_list.append(Satellite(NORAD=sat, HA=ha, TLE=tle, priority=0, geo=geo, block=False, planed=[0] * series))
+            # geo_list[-1].planed = [0] * series
 
 for sat in obj:
     eps = True
@@ -100,60 +102,69 @@ for ser in range(0, series):
     # print("ser#", ser+1)
     geo_list.sort(key=lambda x: x.HA, reverse=False)  # sort satellites by HA  !!!!!!
     f.write("# series N = %i \n" % (ser + 1))
-    # change all BLOCK to False !!!!!!!!!!!!
-    for i in range(0, len(geo_list)):
-        geo_list[i].block = False
+
     for i in range(0, len(geo_list)):
         sat = geo_list[i]
-        if not sat.block:
-            if (sat == geo_list[0]) and (sat.priority == 0) and (ser > 0):
-                T2 = T1 + datetime.timedelta(0, t_ser + t_move + 90)  # add time for safe move to first sat in ser
+        # if not sat.block:
+        if sat.planed[ser] == 0:
+            if (sat == geo_list[0]) and (sat.priority == 0) and (ser > 0):  # sat == geo_list[0] ???? do we need this ?
+                T2 = T1 + datetime.timedelta(0, t_ser + t_move + 90)  # add time for safe move to first sat in series
             else:
                 T2 = T1 + datetime.timedelta(0, t_ser + t_move)  # 0 days and N seconds
                 # t_ser + t_move ---> time for frames capture + move telescope to next point
             if T1 > end_T:
-                print("Sunrise, h_sun -10...")
                 f.close()
+                print("#####\nFinish. Sunrise, h_sun -10...")
                 sys.exit()
 
             Deren.date = T1.strftime("%Y/%m/%d %H:%M:%S")
             ha, ha_sort = sat.calc(Deren)
-            if (sat.geo.elevation > 10) and (T1 < end_T):
+            if (sat.geo.alt > ephem.degrees("10")) and (T1 < end_T):
                 ra = sat.geo.ra
                 dec = sat.geo.dec
-                eclipsed = sat.geo.eclipsed
-                if not eclipsed:
+                if not sat.geo.eclipsed:
                     ha_s, dec_s = corr_ha_dec_s(ha, dec)
                     mag = "0.00"
                     T1_s = T1.strftime("%H%M%S")
                     T2_s = T2.strftime("%H%M%S")
                     f.write(sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
-                            + str_v_plan + T1_s + '-' + T2_s + '   ' + '# %s \n' % eclipsed)
-                    geo_list[i].block = True
+                            + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
+                    # geo_list[i].block = True
+                    geo_list[i].planed[ser] = 1
                 else:  # eclipsed
                     geo_list[i].priority = geo_list[i].priority + 1
-                    print(sat.NORAD, eclipsed)
+                    print("Satellite %s in series %i is eclipsed." % (sat.NORAD, ser))
+                    if debug:
+                        f.write("# %s is eclipsed skipping..\n" % sat.NORAD)
                     x = 1
-                    while eclipsed:
+                    while sat.geo.eclipsed or sat.planed[ser] == 1:
                         if i + x <= len(geo_list)-1:
                             sat = geo_list[i+x]
                             ha, ha_sort = sat.calc(Deren)
                             dec = sat.geo.dec
-                            eclipsed = sat.geo.eclipsed
-                            print(sat.NORAD, eclipsed)
+                            # print(sat.NORAD, sat.geo.eclipsed)
                         x = x + 1
 
-                    print("changed to", sat.NORAD)
+                    if debug:
+                        f.write("# changed to %s \n" % sat.NORAD)
 
                     ha_s, dec_s = corr_ha_dec_s(ha, dec)
                     mag = "0.00"
                     T1_s = T1.strftime("%H%M%S")
                     T2_s = T2.strftime("%H%M%S")
-                    # print("here we are", ha_s)
+                    print("Changing it to %s"% sat.NORAD)
                     f.write(sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
-                            + str_v_plan + T1_s + '-' + T2_s + '   ' + '# %s \n' % eclipsed)
-                    geo_list[i + x - 1].block = True
+                            + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
+                    # geo_list[i + x - 1].block = True
+                    geo_list[i + x - 1].planed[ser] = 1
             else:
                 geo_list[i].priority = geo_list[i].priority + 1
-        T1 = T2
+                if debug:
+                    f.write("# skip satellite %s, h= %s \n" % (sat.NORAD, str(sat.geo.alt)))
+                print("Skip satellite %s in series %i, because of small elevation - h= %s" % (sat.NORAD, ser, str(sat.geo.alt)))
+
+            # CHECK if some unplanned satellites are available now...
+            ###
+            T1 = T2
+print("#####\nFinish. %i series calculated." % series)
 f.close()

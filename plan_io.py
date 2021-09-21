@@ -4,13 +4,14 @@ import ephem
 
 
 class Satellite:
-    def __init__(self, NORAD, HA, priority, TLE, geo, block):
+    def __init__(self, NORAD, HA, priority, TLE, geo, block, planed):
         self.NORAD = NORAD
         self.HA = HA  # HA at the first evening point
         self.priority = priority
         self.TLE = TLE
         self.geo = geo  # pyephem sat object
         self.block = block
+        self.planed = planed  # []  # [planed in ser like [1, 0, 0]]
 
     def calc(self, site):
         self.geo.compute(site)

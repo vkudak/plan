@@ -102,12 +102,18 @@ T1 = start_T
 # series = 2
 for ser in range(0, series):
     print("##################---Ser #%i" % (ser + 1))
-
-    # # sort again !!!!!!!!!!!!!!!!!!!!!!!!!
-    # for v in range(0, len(geo_list)):
-    #     Deren.date = T1.strftime("%Y/%m/%d %H:%M:%S")
-    #     ha = geo_list[v].calc(Deren)
     # geo_list.sort(key=lambda x: x.HA, reverse=False)  # sort satellites by HA  !!!!!!
+    # sort again !!!!!!!!!!!!!!!!!!!!!!!!!
+    for v in range(0, len(geo_list)):
+        Deren.date = T1.strftime("%Y/%m/%d %H:%M:%S")
+        geo_list[v].geo.compute(Deren)
+        ha = ephem.hours(Deren.sidereal_time() - geo_list[v].geo.ra)  # -12 to +12.
+        ha2 = ha
+        if ha > ephem.hours("12:00:00"):
+            ha2 = ephem.hours(Deren.sidereal_time() - geo_list[v].geo.ra - ephem.degrees("360.0"))
+        # print(ha, ha2, ha > ephem.hours("12:00:00"))
+        geo_list[v].HA = ha2
+    geo_list.sort(key=lambda x: x.HA, reverse=False)  # sort satellites by HA  !!!!!!
     #
     # for v in range(0, len(geo_list)):
     #     print(v, geo_list[v].NORAD, geo_list[v].HA)
@@ -137,6 +143,7 @@ for ser in range(0, series):
 
             Deren.date = T1.strftime("%Y/%m/%d %H:%M:%S")
             ha = geo_list[i].calc(Deren)
+            # print("here...", ha, geo_list[i].HA)
             ra, dec = geo_list[i].geo.ra, geo_list[i].geo.dec
             if (geo_list[i].geo.alt > ephem.degrees("10")) and (T1 < end_T):
                 if not geo_list[i].geo.eclipsed:

@@ -15,14 +15,16 @@ class Satellite:
 
     def calc(self, site):
         self.geo.compute(site)
-        # ra = self.geo.ra
         ha_sort = ephem.hours(site.sidereal_time() - self.geo.ra)
-        if ha_sort < 0:
-            ha = ephem.hours(site.sidereal_time() - self.geo.ra + ephem.degrees("360.0"))  # -01 to 23 hour
-        else:
-            ha = ha_sort
+        # print(ha_sort)
         self.HA = ha_sort
-        return ha, ha_sort
+        if ha_sort < 0:
+            # print(self.NORAD, str(ha_sort), str(ephem.hours(site.sidereal_time() - self.geo.ra + ephem.degrees("360.0"))))
+            return ephem.hours(site.sidereal_time() - self.geo.ra + ephem.degrees("360.0"))  # -01 to 23 hour
+        else:
+            return ha_sort
+        # self.HA = ha_sort
+        # return ha
 
 
 def fix_checksum(line):

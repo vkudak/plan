@@ -26,6 +26,14 @@ class Satellite:
         # self.HA = ha_sort
         # return ha
 
+    def calc_moon_angle(self, site):
+        self.geo.compute(site)
+        sc = (self.geo.ra, self.geo.dec)
+        moon = ephem.Moon()
+        moon.compute(site)
+        mc = (moon.ra, moon.dec)
+        return ephem.separation(sc, mc)
+
 
 def fix_checksum(line):
     """Return a new copy of the TLE `line`, with the correct checksum appended.

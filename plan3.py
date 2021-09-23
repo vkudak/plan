@@ -18,7 +18,7 @@ import glob
 
 debug = False  # True
 C = 'HA'  # HA
-series = 3
+series = 4
 t_move = 40
 t_exp = 12.0
 n_frames = 7
@@ -119,11 +119,9 @@ for ser in range(0, series):
     #     print(v, geo_list[v].NORAD, geo_list[v].HA)
     # ###############################################################
 
-
     f.write("# series N = %i \n" % (ser + 1))
     if ser > 0:
         T1 = T1 + + datetime.timedelta(0, t_between_ser)
-
     for i in range(0, len(geo_list)):
         # print(i, geo_list[i].NORAD, geo_list[i].geo.eclipsed, geo_list[i].geo.alt)
         # sat = geo_list[i]
@@ -145,7 +143,8 @@ for ser in range(0, series):
             ha = geo_list[i].calc(Deren)
             # print("here...", ha, geo_list[i].HA)
             ra, dec = geo_list[i].geo.ra, geo_list[i].geo.dec
-            if (geo_list[i].geo.alt > ephem.degrees("10")) and (T1 < end_T):
+            moon_sep = geo_list[i].calc_moon_angle(Deren)
+            if (geo_list[i].geo.alt > ephem.degrees("10")) and (T1 < end_T) and (moon_sep > ephem.degrees("10")):
                 if not geo_list[i].geo.eclipsed:
                     ha_s, dec_s = corr_ha_dec_s(ha, geo_list[i].geo.dec)
                     f.write(geo_list[i].NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
@@ -159,32 +158,49 @@ for ser in range(0, series):
                         f.write("# %s is eclipsed skipping..\n" % geo_list[i].NORAD)
                     x = 1
                     sat = geo_list[i]
+                    found = False
                     while sat.geo.eclipsed or sat.planed[ser] == 1:
                         if i + x <= len(geo_list)-1:
                             sat = geo_list[i+x]
                             Deren.date = T1.strftime("%Y/%m/%d %H:%M:%S")
                             ha = sat.calc(Deren)
                             ra, dec = sat.geo.ra, sat.geo.dec
+                            if not sat.geo.eclipsed:
+                                found = True
                             # print(sat.NORAD, sat.geo.eclipsed)
+                        else:
+                            break
                         x = x + 1
-                    if debug:
-                        f.write("# changed to %s \n" % sat.NORAD)
 
-                    ha_s, dec_s = corr_ha_dec_s(ha, dec)
-                    print("Changing it to %s"% sat.NORAD)
-                    f.write(sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
-                            + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
-                    # geo_list[i + x - 1].block = True
-                    geo_list[i + x - 1].planed[ser] = 1
+                    if found:
+                        if debug:
+                            f.write("# changed to %s \n" % sat.NORAD)
+
+                        # T1 = T2
+                        # T2 = T1 + datetime.timedelta(0, t_ser + t_move)
+                        # T1_s = T1.strftime("%H%M%S")
+                        # T2_s = T2.strftime("%H%M%S")
+                        ha_s, dec_s = corr_ha_dec_s(ha, dec)
+                        print("Changing it to %s"% sat.NORAD)
+                        f.write(sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
+                                + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
+                        # geo_list[i + x - 1].block = True
+                        geo_list[i + x - 1].planed[ser] = 1
             else:
                 geo_list[i].priority = geo_list[i].priority + 1
                 if debug:
-                    f.write("# skip satellite %s, h= %s \n" % (geo_list[i].NORAD, str(geo_list[i].geo.alt)))
-                print("Skip satellite %s in series %i, because of small elevation - h= %s" %
-                      (geo_list[i].NORAD, ser+1, str(geo_list[i].geo.alt)))
+                    f.write("# skip satellite %s, h= %s, Moon sep=%s\n" %
+                            (geo_list[i].NORAD, str(geo_list[i].geo.alt), str(moon_sep)))
+                if geo_list[i].geo.alt < ephem.degrees("10"):
+                    print("Skip satellite %s in series %i, because of small elevation - h= %s" %
+                          (geo_list[i].NORAD, ser+1, str(geo_list[i].geo.alt)))
+                if moon_sep < ephem.degrees("10"):
+                    print("Skip satellite %s in series %i, because of Moon sep = %s" %
+                          (geo_list[i].NORAD, ser+1, str(moon_sep)))
 
             # CHECK if some unplanned satellites are available now...
             # print (i, len(geo_list)-1)
+            added = False
             if i == len(geo_list)-1:
                 # print("HERE NOW!!!!!!!!!!!!!!!!!!!")
                 for j in range(0, len(geo_list)):
@@ -193,13 +209,22 @@ for ser in range(0, series):
                     # print(j, geo_list[j].planed[ser], geo_list[j].geo.eclipsed)
                     if (geo_list[j].planed[ser] == 0) and (not geo_list[j].geo.eclipsed) and \
                             (geo_list[j].geo.alt > ephem.degrees("10")):
+                        T1 = T2
+                        T2 = T1 + datetime.timedelta(0, t_ser + t_move)
+                        T1_s = T1.strftime("%H%M%S")
+                        T2_s = T2.strftime("%H%M%S")
                         ha_s, dec_s = corr_ha_dec_s(ha, geo_list[j].geo.dec)
                         print("Satellite %s is out of eclipse, added to the end of series %i " %
                               (geo_list[j].NORAD, ser + 1))
                         f.write(geo_list[j].NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
                                 + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
                         geo_list[j].planed[ser] = 1
+                        added = True
             ###
-            T1 = T2
+            if (geo_list[i].geo.alt > ephem.degrees("10")) and (moon_sep > ephem.degrees("10")) and (not added):
+                T1 = T2
+            if added:
+                T1 = T2
+
 print("#####\nFinish. %i series calculated." % series)
 f.close()

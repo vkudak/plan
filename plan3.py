@@ -111,6 +111,8 @@ for ser in range(0, series):
         ha2 = ha
         if ha > ephem.hours("12:00:00"):
             ha2 = ephem.hours(Deren.sidereal_time() - geo_list[v].geo.ra - ephem.degrees("360.0"))
+        if ha < ephem.hours("-12:00:00"):
+            ha2 = ephem.hours(Deren.sidereal_time() - geo_list[v].geo.ra + ephem.degrees("360.0"))
         # print(ha, ha2, ha > ephem.hours("12:00:00"))
         geo_list[v].HA = ha2
     geo_list.sort(key=lambda x: x.HA, reverse=False)  # sort satellites by HA  !!!!!!

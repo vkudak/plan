@@ -16,13 +16,26 @@ import glob
 # print calc_T_twilight()
 # print "--------------------------"
 
+def print_park(T1, file):
+    if park:
+        T1_s = T1.strftime("%H%M%S")
+        T2 = T1 + datetime.timedelta(0, 30)
+        T2_s = T2.strftime("%H%M%S")
+        str_v_plan_p = str(1) + "x" + str(t_exp) + " @"
+        file.write('park  = ' + "HA" + ' ' + '194821.45  -064724.7' + '  ' + mag + ' '
+                                    + str_v_plan_p + T1_s + '-' + T2_s + '   ' + '\n')
+        # park  = HA 194818.02  -064718.6  0.00 7x12.0:30 @011036-011251
+
+
 debug = False  # True
+park = True
 C = 'HA'  # HA
-series = 4
+h_sun = -10
+series = 5
 t_move = 40
 t_exp = 12.0
 n_frames = 7
-exp_wait = 30  # interval between frames
+exp_wait = 30 #30  # interval between frames
 t_between_ser = 0  # 60 * 5 seconds dead time between series
 # t_miz_ser = 3.6*60*60
 
@@ -31,7 +44,7 @@ str_v_plan = str(n_frames) + "x" + str(t_exp) + ":" + str(exp_wait) + " @"
 
 ndate = datetime.datetime.now().strftime("%Y%m%d")
 f = open('object_' + C + '_' + ndate + '.list', 'w')
-start_T, end_T = calc_T_twilight()
+start_T, end_T = calc_T_twilight(h_sun=h_sun)
 # start_T = datetime.datetime(year=2021, month=9, day=14, hour=18, minute=0, second=0)
 
 obj = read_planed_objects('planed_objects.txt')
@@ -134,8 +147,9 @@ for ser in range(0, series):
                 T2 = T1 + datetime.timedelta(0, t_ser + t_move)  # 0 days and N seconds
                 # t_ser + t_move ---> time for frames capture + move telescope to next point
             if T1 > end_T:
+                print_park(T1, f)
                 f.close()
-                print("#####\nFinish. Sunrise, h_sun -10...")
+                print("#####\nFinish. Sunrise, h_sun=%i..." % h_sun)
                 sys.exit()
             mag = "0.00"
             T1_s = T1.strftime("%H%M%S")
@@ -196,6 +210,8 @@ for ser in range(0, series):
                 if geo_list[i].geo.alt < ephem.degrees("10"):
                     print("Skip satellite %s in series %i, because of small elevation - h= %s" %
                           (geo_list[i].NORAD, ser+1, str(geo_list[i].geo.alt)))
+                    # T1 = T2
+                    # T2 = T1 + datetime.timedelta(0, t_ser + t_move)
                 if moon_sep < ephem.degrees("10"):
                     print("Skip satellite %s in series %i, because of Moon sep = %s" %
                           (geo_list[i].NORAD, ser+1, str(moon_sep)))
@@ -227,6 +243,6 @@ for ser in range(0, series):
                 T1 = T2
             if added:
                 T1 = T2
-
+print_park(T1, f)
 print("#####\nFinish. %i series calculated." % series)
 f.close()

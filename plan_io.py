@@ -1,5 +1,7 @@
 import glob, os, sys
 import datetime
+import math
+
 import ephem
 
 
@@ -239,7 +241,36 @@ def fDT(date, hh):
     DT = datetime.datetime.combine(date_part, datetime.time(int(hour), int(minuts), int(sec)))
     return DT
 
+
 def moon_phase():
     date_str = datetime.datetime.now().strftime('%Y/%m/%d')
     moon = ephem.Moon(date_str)
     return moon.moon_phase * 100
+
+
+def deg_to_float(deg):
+    return float(math.degrees(deg))
+
+
+def calc_geo_speed(geo, site, date, flag):
+    # Deren.date = T1.strftime("%Y/%m/%d %H:%M:%S")
+    site.date = date
+    ha = geo.calc(site)
+    ra, dec = geo.geo.ra, geo.geo.dec
+
+    n_sec = 60
+    # moment 2
+    site.date = site.date.datetime() + datetime.timedelta(seconds=n_sec)
+    ha2 = geo.calc(site)
+    ra2, dec2 = geo.geo.ra, geo.geo.dec
+
+    ra_speed = (deg_to_float(ephem.degrees(ra2)) - deg_to_float(ephem.degrees(ra))) * 60 * 60
+    ha_speed = (deg_to_float(ephem.degrees(ha2)) - deg_to_float(ephem.degrees(ha))) * 60 * 60
+    dec_speed = (deg_to_float(ephem.degrees(dec2)) - deg_to_float(ephem.degrees(dec))) * 60 * 60
+
+    if flag == "HA":
+        # ha_speed = (ha2 - ha) #/ 100
+        return ha_speed / n_sec, dec_speed / n_sec
+    else:
+        # ra_speed = (ra2 - ra) #/ 100
+        return ra_speed / n_sec, dec_speed / n_sec

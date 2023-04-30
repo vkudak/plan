@@ -35,6 +35,8 @@ def read_config():
             c_n_frames = config.getint('options', 'n_frames', fallback=10)
             c_exp_wait = config.getfloat('options', 'exp_wait', fallback=0)
             c_t_between_ser = config.getfloat('options', 't_between_ser', fallback=300)
+            c_track = config.getboolean('options', 'track', fallback=False)
+            c_band = config.get("options", 'filter', fallback="")
 
             c_park = config.getboolean('park', 'park', fallback=True)
             c_park_ra= config.get("park", 'park_RA', fallback="194821.45")
@@ -52,6 +54,8 @@ def read_config():
                     'n_frames': c_n_frames,
                     'exp_wait': c_exp_wait,
                     't_between_ser': c_t_between_ser,
+                    "track": c_track,
+                    "band": c_band,
                     'park': c_park,
                     'park_ra': c_park_ra,
                     'park_dec': c_park_dec,
@@ -110,6 +114,9 @@ t_between_ser = conf_res["t_between_ser"]  # 30*10  # 60 * 5 seconds dead time b
 park_ra = conf_res['park_ra']
 park_dec = conf_res['park_dec']
 
+tracking = conf_res['track']
+band = conf_res["filter"]
+
 
 moon_ph = moon_phase()
 print(f"Moon phase is {moon_phase():.1f} %")
@@ -121,8 +128,13 @@ elif moon_ph > 50:
     moon_dist = str(conf_res["moon_dist2"])  # "40"
 print(f"Moon distance will be {moon_dist} degrees")
 
-t_ser = n_frames * (t_exp + 3 + exp_wait)  # 3 - readout, 
-str_v_plan = str(n_frames) + "x" + str(t_exp) + ":" + str(exp_wait) + " @" 
+t_ser = n_frames * (t_exp + 3 + exp_wait)  # 3 - readout,
+
+if band is None or band == "":
+    str_v_plan = f"{n_frames}x{t_exp}:{exp_wait:3.1f} @"
+else:
+    str_v_plan = f"{n_frames}x{t_exp}:{exp_wait}*{band} @"
+
 
 ndate = datetime.datetime.now().strftime("%Y%m%d")
 f = open('object_' + C + '_' + ndate + '.list', 'w')
@@ -241,12 +253,20 @@ for ser in range(0, series):
             ha = geo_list[i].calc(Deren)
             # print("here...", ha, geo_list[i].HA)
             ra, dec = geo_list[i].geo.ra, geo_list[i].geo.dec
+            if tracking:
+                ra_speed, dec_speed = calc_geo_speed(geo=geo_list[i], site=Deren, date=Deren.date, flag=C)
             moon_sep = geo_list[i].calc_moon_angle(Deren)
             if (geo_list[i].geo.alt > ephem.degrees("10")) and (T1 < end_T) and (moon_sep > ephem.degrees(moon_dist)):
                 if not geo_list[i].geo.eclipsed:
                     ha_s, dec_s = corr_ha_dec_s(ha, geo_list[i].geo.dec)
-                    f.write(geo_list[i].NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
-                            + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
+                    if tracking:
+                        my_line = f"{geo_list[i].NORAD} = {flag} {ha_s}({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n"
+                        f.write(my_line)
+                    else:
+                        my_line = f"{geo_list[i].NORAD} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n"
+                        f.write(my_line)
+                        # f.write(geo_list[i].NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
+                        #         + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
                     # geo_list[i].block = True
                     geo_list[i].planed[ser] = 1
                 else:  # eclipsed
@@ -280,8 +300,14 @@ for ser in range(0, series):
                         # T2_s = T2.strftime("%H%M%S")
                         ha_s, dec_s = corr_ha_dec_s(ha, dec)
                         print("Changing it to %s"% sat.NORAD)
-                        f.write(sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
-                                + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
+                        if tracking:
+                            ra_speed, dec_speed = calc_geo_speed(geo=sat, site=Deren, date=Deren.date, flag=C)
+                            f.write(
+                                f"{sat.NORAD} = {flag} {ha_s}({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n")
+                        else:
+                            f.write(f"{sat.NORAD} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n")
+                            # sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
+                            #     + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
                         # geo_list[i + x - 1].block = True
                         geo_list[i + x - 1].planed[ser] = 1
             else:
@@ -316,8 +342,15 @@ for ser in range(0, series):
                         ha_s, dec_s = corr_ha_dec_s(ha, geo_list[j].geo.dec)
                         print("Satellite %s is out of eclipse, added to the end of series %i " %
                               (geo_list[j].NORAD, ser + 1))
-                        f.write(geo_list[j].NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
-                                + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
+                        if tracking:
+                            ra_speed, dec_speed = calc_geo_speed(geo=geo_list[i], site=Deren, date=Deren.date, flag=C)
+                            f.write(
+                                f"{geo_list[j].NORAD} = {flag} {ha_s}({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n")
+                        else:
+                            f.write(
+                                f"{geo_list[j].NORAD} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n")
+                            # f.write(geo_list[j].NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
+                            #         + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
                         geo_list[j].planed[ser] = 1
                         added = True
             ###

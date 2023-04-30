@@ -44,7 +44,6 @@ def read_config():
             c_moon2 = config.getfloat('Moon', 'dist2', fallback=40)
 
             return {'debug': c_debug,
-                    'park': c_park,
                     'plan_type': c_plan_type,
                     'h_sun': c_h_sun,
                     'series': c_series,
@@ -53,8 +52,9 @@ def read_config():
                     'n_frames': c_n_frames,
                     'exp_wait': c_exp_wait,
                     't_between_ser': c_t_between_ser,
-                    'c_park_ra': c_park_ra,
-                    'c_park_dec': c_park_dec,
+                    'park': c_park,
+                    'park_ra': c_park_ra,
+                    'park_dec': c_park_dec,
                     'moon_dist1': c_moon1,
                     'moon_dist2': c_moon2,
                     }
@@ -67,16 +67,19 @@ def read_config():
         sys.exit()
 
 
-def print_park(T1, file):
-    # TODO read park coord from config
+def print_park(T1, file, park_ra, park_dec):
     if park:
         T1_s = T1.strftime("%H%M%S")
         T2 = T1 + datetime.timedelta(0, 30)
         T2_s = T2.strftime("%H%M%S")
+        park_radec = park_ra + "  " + park_dec
         str_v_plan_p = str(1) + "x" + str(t_exp) + " @"
-        file.write('park  = ' + "HA" + ' ' + '194821.45  -084724.7' + '  ' + mag + ' '
+        file.write('park  = ' + "HA" + ' ' + park_radec + '  ' + mag + ' '
                                     + str_v_plan_p + T1_s + '-' + T2_s + '   ' + '\n')
+        # file.write('park  = ' + "HA" + ' ' + '194821.45  -084724.7' + '  ' + mag + ' '
+        #                             + str_v_plan_p + T1_s + '-' + T2_s + '   ' + '\n')
         # park  = HA 194818.02  -064718.6  0.00 7x12.0:30 @011036-011251
+
 
 # debug = False  # True
 # park = True
@@ -103,6 +106,9 @@ t_exp = conf_res["t_exp"]
 n_frames = conf_res["n_frames"]
 exp_wait = conf_res["exp_wait"]  # 20 #30  # interval between frames
 t_between_ser = conf_res["t_between_ser"]  # 30*10  # 60 * 5 seconds dead time between series
+
+park_ra = conf_res['park_ra']
+park_dec = conf_res['park_dec']
 
 
 moon_ph = moon_phase()
@@ -223,7 +229,7 @@ for ser in range(0, series):
                 T2 = T1 + datetime.timedelta(0, t_ser + t_move)  # 0 days and N seconds
                 # t_ser + t_move ---> time for frames capture + move telescope to next point
             if T1 > end_T:
-                print_park(T1, f)
+                print_park(T1, f, park_ra, park_dec)
                 f.close()
                 print("#####\nFinish. Sunrise, h_sun=%i..." % h_sun)
                 sys.exit()
@@ -319,6 +325,6 @@ for ser in range(0, series):
                 T1 = T2
             if added:
                 T1 = T2
-print_park(T1, f)
+print_park(T1, f, park_ra, park_dec)
 print("#####\nFinish. %i series calculated." % series)
 f.close()

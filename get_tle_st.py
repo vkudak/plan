@@ -1,32 +1,24 @@
+import configparser
 import os
 import datetime
+import sys
+
 from spacetrack import SpaceTrackClient
 
 list_my = [
-28358,
 18570,
-35943,
-36582,
-36868,
-37948,
-38091,
-38977,
-39079,
-39285,
-40258,
-40505,
-41105,
-41238,
-41384,
-42907,
-44035,
-43867,
-44457,
-44903,
 ]
 
+config = configparser.ConfigParser(inline_comment_prefixes="#")
+try:
+	config.read('config.ini')
+	username = config.get('space_track', 'username')
+	password = config.get('space_track', 'password')
+except Exception as E:
+	print("Error in INI file\n", E)
+	sys.exit()
 
-st = SpaceTrackClient('labLKD', 'lablkdSpace2013')
+st = SpaceTrackClient(username, password)
 
 ndate = datetime.datetime.now().strftime("%Y%m%d")
 

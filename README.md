@@ -5,3 +5,9 @@
 * Custumize options in first rows of `plan3.py`
 * Run `python plan3.py`
 * Result in object_HA(RA)_YYYYMMDD.list
+
+# Additional scripts for tle retrieving:
+* `get_tle_n2yo.py`
+* `get_tle_st.py`
+
+API or username/password should be added in config sections

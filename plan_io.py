@@ -50,7 +50,7 @@ def compute_checksum(line):
     return sum((int(c) if c.isdigit() else c == '-') for c in line[0:68]) % 10
 
 
-def calc_T_twilight():
+def calc_T_twilight(h_sun=-12):
     import ephem
     # Make an observer
     fred = ephem.Observer()
@@ -75,7 +75,7 @@ def calc_T_twilight():
     # sunset =fred.next_setting   (ephem.Sun()) #Sunset
 
     # We relocate the horizon to get twilight times
-    fred.horizon = '-10'  # -6=civil twilight, -12=nautical, -18=astronomical
+    fred.horizon = str(h_sun)#'-10'  # -6=civil twilight, -12=nautical, -18=astronomical
     # beg_twilight=fred.previous_rising(ephem.Sun(), use_center=True) #Begin civil twilight
     end_twilight = fred.next_setting(ephem.Sun(), use_center=True)  # End civil twilight
     start_twilight = fred.next_rising(ephem.Sun(), use_center=True)
@@ -238,3 +238,8 @@ def fDT(date, hh):
     hour, minuts, sec = hh.split(':')
     DT = datetime.datetime.combine(date_part, datetime.time(int(hour), int(minuts), int(sec)))
     return DT
+
+def moon_phase():
+    date_str = datetime.datetime.now().strftime('%Y/%m/%d')
+    moon = ephem.Moon(date_str)
+    return moon.moon_phase * 100

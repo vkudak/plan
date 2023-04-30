@@ -22,22 +22,32 @@ def print_park(T1, file):
         T2 = T1 + datetime.timedelta(0, 30)
         T2_s = T2.strftime("%H%M%S")
         str_v_plan_p = str(1) + "x" + str(t_exp) + " @"
-        file.write('park  = ' + "HA" + ' ' + '194821.45  -064724.7' + '  ' + mag + ' '
+        file.write('park  = ' + "HA" + ' ' + '194821.45  -084724.7' + '  ' + mag + ' '
                                     + str_v_plan_p + T1_s + '-' + T2_s + '   ' + '\n')
         # park  = HA 194818.02  -064718.6  0.00 7x12.0:30 @011036-011251
-
 
 debug = False  # True
 park = True
 C = 'HA'  # HA
-h_sun = -10
-series = 5
+h_sun = -12
+series = 7
 t_move = 40
 t_exp = 12.0
-n_frames = 7
-exp_wait = 30 #30  # interval between frames
-t_between_ser = 0  # 60 * 5 seconds dead time between series
+n_frames = 10
+exp_wait = 0 #20 #30  # interval between frames
+t_between_ser = 30*10  # 60 * 5 seconds dead time between series
 # t_miz_ser = 3.6*60*60
+
+
+moon_ph = moon_phase()
+print(f"Moon phase is {moon_phase():.1f} %")
+
+moon_dist = "10"
+if moon_ph < 50:
+	moon_dist = "30"
+elif moon_ph > 50:
+	moon_dist = "40"
+print(f"Moon distance will be {moon_dist} degrees")
 
 t_ser = n_frames * (t_exp + 3 + exp_wait)  # 3 - readout, 
 str_v_plan = str(n_frames) + "x" + str(t_exp) + ":" + str(exp_wait) + " @" 
@@ -45,7 +55,7 @@ str_v_plan = str(n_frames) + "x" + str(t_exp) + ":" + str(exp_wait) + " @"
 ndate = datetime.datetime.now().strftime("%Y%m%d")
 f = open('object_' + C + '_' + ndate + '.list', 'w')
 start_T, end_T = calc_T_twilight(h_sun=h_sun)
-# start_T = datetime.datetime(year=2021, month=9, day=14, hour=18, minute=0, second=0)
+# start_T = datetime.datetime(year=2023, month=2, day=9, hour=22, minute=0, second=0)
 
 obj = read_planed_objects('planed_objects.txt')
 print("Satellites to plan = %i " % len(obj))
@@ -160,7 +170,7 @@ for ser in range(0, series):
             # print("here...", ha, geo_list[i].HA)
             ra, dec = geo_list[i].geo.ra, geo_list[i].geo.dec
             moon_sep = geo_list[i].calc_moon_angle(Deren)
-            if (geo_list[i].geo.alt > ephem.degrees("10")) and (T1 < end_T) and (moon_sep > ephem.degrees("10")):
+            if (geo_list[i].geo.alt > ephem.degrees("10")) and (T1 < end_T) and (moon_sep > ephem.degrees(moon_dist)):
                 if not geo_list[i].geo.eclipsed:
                     ha_s, dec_s = corr_ha_dec_s(ha, geo_list[i].geo.dec)
                     f.write(geo_list[i].NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '

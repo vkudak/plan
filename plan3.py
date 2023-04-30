@@ -2,6 +2,7 @@
 # import glob, os, sys
 # import datetime
 # import ephem
+import configparser
 from plan_io import *
 import glob
 # https://rhodesmill.org/skyfield/earth-satellites.html  ?????
@@ -16,7 +17,58 @@ import glob
 # print calc_T_twilight()
 # print "--------------------------"
 
+
+def read_config():
+    config = configparser.ConfigParser(inline_comment_prefixes="#")
+
+    if os.path.isfile('config.ini'):
+        try:
+            config.read('config.ini')
+
+            c_debug = config.getboolean('global', 'debug', fallback=False)
+
+            c_plan_type = config.get("options", 'plan_type', fallback="HA")
+            c_h_sun = config.getfloat('options', 'h_sun', fallback=-12)
+            c_series = config.getint('options', 'series', fallback=7)
+            c_t_move = config.getint('options', 't_move', fallback=40)
+            c_t_exp = config.getfloat('options', 't_exp', fallback=12)
+            c_n_frames = config.getint('options', 'n_frames', fallback=10)
+            c_exp_wait = config.getfloat('options', 'exp_wait', fallback=0)
+            c_t_between_ser = config.getfloat('options', 't_between_ser', fallback=300)
+
+            c_park = config.getboolean('park', 'park', fallback=True)
+            c_park_ra= config.get("park", 'park_RA', fallback="194821.45")
+            c_park_dec = config.get("park", 'park_DEC', fallback="-084724.7")
+
+            c_moon1 = config.getfloat('Moon', 'dist1', fallback=30)
+            c_moon2 = config.getfloat('Moon', 'dist2', fallback=40)
+
+            return {'debug': c_debug,
+                    'park': c_park,
+                    'plan_type': c_plan_type,
+                    'h_sun': c_h_sun,
+                    'series': c_series,
+                    't_move': c_t_move,
+                    't_exp': c_t_exp,
+                    'n_frames': c_n_frames,
+                    'exp_wait': c_exp_wait,
+                    't_between_ser': c_t_between_ser,
+                    'c_park_ra': c_park_ra,
+                    'c_park_dec': c_park_dec,
+                    'moon_dist1': c_moon1,
+                    'moon_dist2': c_moon2,
+                    }
+
+        except Exception as E:
+            print("Error in INI file\n", E)
+            sys.exit()
+    else:
+        print("Error. Cant find config_sat.ini")
+        sys.exit()
+
+
 def print_park(T1, file):
+    # TODO read park coord from config
     if park:
         T1_s = T1.strftime("%H%M%S")
         T2 = T1 + datetime.timedelta(0, 30)
@@ -26,17 +78,31 @@ def print_park(T1, file):
                                     + str_v_plan_p + T1_s + '-' + T2_s + '   ' + '\n')
         # park  = HA 194818.02  -064718.6  0.00 7x12.0:30 @011036-011251
 
-debug = False  # True
-park = True
-C = 'HA'  # HA
-h_sun = -12
-series = 7
-t_move = 40
-t_exp = 12.0
-n_frames = 10
-exp_wait = 0 #20 #30  # interval between frames
-t_between_ser = 30*10  # 60 * 5 seconds dead time between series
-# t_miz_ser = 3.6*60*60
+# debug = False  # True
+# park = True
+# C = 'HA'  # HA
+# h_sun = -12
+# series = 7
+# t_move = 40
+# t_exp = 12.0
+# n_frames = 10
+# exp_wait = 0 #20 #30  # interval between frames
+# t_between_ser = 30*10  # 60 * 5 seconds dead time between series
+# # t_miz_ser = 3.6*60*60
+
+
+conf_res = read_config()
+
+debug = conf_res["debug"]
+park = conf_res["park"]
+C = conf_res["plan_type"]  # HA
+h_sun = conf_res["h_sun"]
+series = conf_res["series"]
+t_move = conf_res["t_move"]
+t_exp = conf_res["t_exp"]
+n_frames = conf_res["n_frames"]
+exp_wait = conf_res["exp_wait"]  # 20 #30  # interval between frames
+t_between_ser = conf_res["t_between_ser"]  # 30*10  # 60 * 5 seconds dead time between series
 
 
 moon_ph = moon_phase()
@@ -44,9 +110,9 @@ print(f"Moon phase is {moon_phase():.1f} %")
 
 moon_dist = "10"
 if moon_ph < 50:
-	moon_dist = "30"
+    moon_dist = str(conf_res["moon_dist1"])  # "30"
 elif moon_ph > 50:
-	moon_dist = "40"
+    moon_dist = str(conf_res["moon_dist2"])  # "40"
 print(f"Moon distance will be {moon_dist} degrees")
 
 t_ser = n_frames * (t_exp + 3 + exp_wait)  # 3 - readout, 

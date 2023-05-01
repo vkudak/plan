@@ -6,7 +6,7 @@
 * Run `python plan3.py`
 * Result in object_HA(RA)_YYYYMMDD.list
 
-# Additional scripts for tle retrieving:
+# Additional scripts for TLE retrieving:
 * `get_tle_n2yo.py`
 * `get_tle_st.py`
 

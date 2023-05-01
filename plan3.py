@@ -2,6 +2,7 @@
 # import glob, os, sys
 # import datetime
 # import ephem
+import argparse
 import configparser
 from plan_io import *
 import glob
@@ -18,12 +19,22 @@ import glob
 # print "--------------------------"
 
 
-def read_config():
+parser = argparse.ArgumentParser(description='Plan of GSO observation')
+parser.add_argument('-c', '--config', help='Specify config file', required=False)
+parser.add_argument('-o', '--objects', help='Specify file with objects', required=False)
+args = vars(parser.parse_args())
+
+
+def read_config(conf_file):
+    """
+    :param conf_file: name of config file
+    :return: dict of parameters
+    """
     config = configparser.ConfigParser(inline_comment_prefixes="#")
 
-    if os.path.isfile('config.ini'):
+    if os.path.isfile(conf_file):
         try:
-            config.read('config.ini')
+            config.read(conf_file)
 
             c_debug = config.getboolean('global', 'debug', fallback=False)
 
@@ -36,10 +47,11 @@ def read_config():
             c_exp_wait = config.getfloat('options', 'exp_wait', fallback=0)
             c_t_between_ser = config.getfloat('options', 't_between_ser', fallback=300)
             c_track = config.getboolean('options', 'track', fallback=False)
-            c_band = config.get("options", 'filter', fallback="")
+            c_min_track_speed = config.getfloat('options', 'min_track_speed', fallback=0.1)
+            c_band = config.get("options", 'filter', fallback=None)
 
             c_park = config.getboolean('park', 'park', fallback=True)
-            c_park_ra= config.get("park", 'park_RA', fallback="194821.45")
+            c_park_ra = config.get("park", 'park_RA', fallback="194821.45")
             c_park_dec = config.get("park", 'park_DEC', fallback="-084724.7")
 
             c_moon1 = config.getfloat('Moon', 'dist1', fallback=30)
@@ -55,6 +67,7 @@ def read_config():
                     'exp_wait': c_exp_wait,
                     't_between_ser': c_t_between_ser,
                     "track": c_track,
+                    "min_track_speed": c_min_track_speed,
                     "band": c_band,
                     'park': c_park,
                     'park_ra': c_park_ra,
@@ -98,7 +111,17 @@ def print_park(T1, file, park_ra, park_dec):
 # # t_miz_ser = 3.6*60*60
 
 
-conf_res = read_config()
+if args["config"]:
+    config_name = args["config"]
+else:
+    config_name = "config.ini"
+
+if args["objects"]:
+    objects_file = args["objects"]
+else:
+    objects_file = "planed_objects.txt"
+
+conf_res = read_config(conf_file=config_name)
 
 debug = conf_res["debug"]
 park = conf_res["park"]
@@ -110,13 +133,15 @@ t_exp = conf_res["t_exp"]
 n_frames = conf_res["n_frames"]
 exp_wait = conf_res["exp_wait"]  # 20 #30  # interval between frames
 t_between_ser = conf_res["t_between_ser"]  # 30*10  # 60 * 5 seconds dead time between series
+min_track_speed = conf_res["min_track_speed"]
 
 park_ra = conf_res['park_ra']
 park_dec = conf_res['park_dec']
 
 tracking = conf_res['track']
-band = conf_res["filter"]
-
+band = conf_res["band"]
+if band == "None":
+    band = None
 
 moon_ph = moon_phase()
 print(f"Moon phase is {moon_phase():.1f} %")
@@ -141,7 +166,7 @@ f = open('object_' + C + '_' + ndate + '.list', 'w')
 start_T, end_T = calc_T_twilight(h_sun=h_sun)
 # start_T = datetime.datetime(year=2023, month=2, day=9, hour=22, minute=0, second=0)
 
-obj = read_planed_objects('planed_objects.txt')
+obj = read_planed_objects(objects_file)
 print("Satellites to plan = %i " % len(obj))
 if not os.path.isdir('tle'):
     print("Error !!!! No TLE files in 'tle' directory")
@@ -172,7 +197,12 @@ for sat in obj:
 
             geo = ephem.readtle(tle[0], tle[1], tle[2])
             Deren.date = start_T.strftime("%Y/%m/%d %H:%M:%S")  # "2021/09/17 18:00:00" #'2003/3/23 H:M:S'
-            geo.compute(Deren)
+            try:
+                geo.compute(Deren)
+            except Exception as E:
+                print(f"Error with Satellite NORAD {sat}\n", E)
+                # sys.exit()
+
             ha = ephem.hours(Deren.sidereal_time() - geo.ra)  # -12 to +12.
             #                                                 To convert 0-24 do + h<0 : geo.ra + ephem.degrees("360.0")
             # if ha < 0:
@@ -253,13 +283,12 @@ for ser in range(0, series):
             ha = geo_list[i].calc(Deren)
             # print("here...", ha, geo_list[i].HA)
             ra, dec = geo_list[i].geo.ra, geo_list[i].geo.dec
-            if tracking:
-                ra_speed, dec_speed = calc_geo_speed(geo=geo_list[i], site=Deren, date=Deren.date, flag=C)
+            ra_speed, dec_speed = calc_geo_speed(geo=geo_list[i], site=Deren, date=Deren.date, flag=C)
             moon_sep = geo_list[i].calc_moon_angle(Deren)
             if (geo_list[i].geo.alt > ephem.degrees("10")) and (T1 < end_T) and (moon_sep > ephem.degrees(moon_dist)):
                 if not geo_list[i].geo.eclipsed:
                     ha_s, dec_s = corr_ha_dec_s(ha, geo_list[i].geo.dec)
-                    if tracking:
+                    if tracking and (abs(ra_speed)> min_track_speed or abs(dec_speed) > min_track_speed):
                         my_line = f"{geo_list[i].NORAD} = {flag} {ha_s}({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n"
                         f.write(my_line)
                     else:
@@ -300,8 +329,8 @@ for ser in range(0, series):
                         # T2_s = T2.strftime("%H%M%S")
                         ha_s, dec_s = corr_ha_dec_s(ha, dec)
                         print("Changing it to %s"% sat.NORAD)
-                        if tracking:
-                            ra_speed, dec_speed = calc_geo_speed(geo=sat, site=Deren, date=Deren.date, flag=C)
+                        ra_speed, dec_speed = calc_geo_speed(geo=sat, site=Deren, date=Deren.date, flag=C)
+                        if tracking and (abs(ra_speed)> min_track_speed or abs(dec_speed) > min_track_speed):
                             f.write(
                                 f"{sat.NORAD} = {flag} {ha_s}({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n")
                         else:
@@ -342,8 +371,8 @@ for ser in range(0, series):
                         ha_s, dec_s = corr_ha_dec_s(ha, geo_list[j].geo.dec)
                         print("Satellite %s is out of eclipse, added to the end of series %i " %
                               (geo_list[j].NORAD, ser + 1))
-                        if tracking:
-                            ra_speed, dec_speed = calc_geo_speed(geo=geo_list[i], site=Deren, date=Deren.date, flag=C)
+                        ra_speed, dec_speed = calc_geo_speed(geo=geo_list[i], site=Deren, date=Deren.date, flag=C)
+                        if tracking and (abs(ra_speed)> min_track_speed or abs(dec_speed) > min_track_speed):
                             f.write(
                                 f"{geo_list[j].NORAD} = {flag} {ha_s}({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n")
                         else:

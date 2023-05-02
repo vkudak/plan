@@ -44,7 +44,7 @@ def read_config(conf_file):
             c_t_move = config.getint('options', 't_move', fallback=40)
             c_t_exp = config.getfloat('options', 't_exp', fallback=12)
             c_n_frames = config.getint('options', 'n_frames', fallback=10)
-            c_exp_wait = config.getfloat('options', 'exp_wait', fallback=0)
+            c_exp_wait = config.getint('options', 'exp_wait', fallback=0)
             c_t_between_ser = config.getfloat('options', 't_between_ser', fallback=300)
             c_track = config.getboolean('options', 'track', fallback=False)
             c_min_track_speed = config.getfloat('options', 'min_track_speed', fallback=0.1)
@@ -114,11 +114,13 @@ def print_park(T1, file, park_ra, park_dec):
 if args["config"]:
     config_name = args["config"]
 else:
+    print("Search for configuration in default filename - config.ini")
     config_name = "config.ini"
 
 if args["objects"]:
     objects_file = args["objects"]
 else:
+    print("Search for targets in default filename - planed_objects.txt")
     objects_file = "planed_objects.txt"
 
 conf_res = read_config(conf_file=config_name)
@@ -156,13 +158,18 @@ print(f"Moon distance will be {moon_dist} degrees")
 t_ser = n_frames * (t_exp + 3 + exp_wait)  # 3 - readout,
 
 if band is None or band == "":
-    str_v_plan = f"{n_frames}x{t_exp}:{exp_wait:3.1f} @"
+    str_v_plan = f"{n_frames}x{t_exp}:{exp_wait} @"
 else:
     str_v_plan = f"{n_frames}x{t_exp}:{exp_wait}*{band} @"
 
 
 ndate = datetime.datetime.now().strftime("%Y%m%d")
 f = open('object_' + C + '_' + ndate + '.list', 'w')
+
+for k, v in conf_res.items():
+    f.write(f"# {k} = {v}\n")
+f.write("#\n")
+
 start_T, end_T = calc_T_twilight(h_sun=h_sun)
 # start_T = datetime.datetime(year=2023, month=2, day=9, hour=22, minute=0, second=0)
 
@@ -288,8 +295,11 @@ for ser in range(0, series):
             if (geo_list[i].geo.alt > ephem.degrees("10")) and (T1 < end_T) and (moon_sep > ephem.degrees(moon_dist)):
                 if not geo_list[i].geo.eclipsed:
                     ha_s, dec_s = corr_ha_dec_s(ha, geo_list[i].geo.dec)
-                    if tracking and (abs(ra_speed)> min_track_speed or abs(dec_speed) > min_track_speed):
-                        my_line = f"{geo_list[i].NORAD} = {flag} {ha_s}({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n"
+                    if tracking and (abs(ra_speed) > min_track_speed or abs(dec_speed) > min_track_speed):
+                        my_line = (f"{geo_list[i].NORAD} = {flag} {ha_s}"
+                                   f"({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) "
+                                   f"{mag} {str_v_plan}{T1_s}-{T2_s}\n"
+                                   )
                         f.write(my_line)
                     else:
                         my_line = f"{geo_list[i].NORAD} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n"
@@ -332,7 +342,9 @@ for ser in range(0, series):
                         ra_speed, dec_speed = calc_geo_speed(geo=sat, site=Deren, date=Deren.date, flag=C)
                         if tracking and (abs(ra_speed)> min_track_speed or abs(dec_speed) > min_track_speed):
                             f.write(
-                                f"{sat.NORAD} = {flag} {ha_s}({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n")
+                                (f"{sat.NORAD} = {flag} {ha_s}({ra_speed:3.2f})  "
+                                 f"{dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n")
+                            )
                         else:
                             f.write(f"{sat.NORAD} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n")
                             # sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
@@ -374,7 +386,10 @@ for ser in range(0, series):
                         ra_speed, dec_speed = calc_geo_speed(geo=geo_list[i], site=Deren, date=Deren.date, flag=C)
                         if tracking and (abs(ra_speed)> min_track_speed or abs(dec_speed) > min_track_speed):
                             f.write(
-                                f"{geo_list[j].NORAD} = {flag} {ha_s}({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n")
+                                (f"{geo_list[j].NORAD} = {flag} {ha_s}({ra_speed:3.2f})  "
+                                 f"{dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n"
+                                 )
+                            )
                         else:
                             f.write(
                                 f"{geo_list[j].NORAD} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n")

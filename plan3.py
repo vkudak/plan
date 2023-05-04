@@ -361,9 +361,10 @@ for ser in range(0, series):
                           (geo_list[i].NORAD, ser+1, str(geo_list[i].geo.alt)))
                     # T1 = T2
                     # T2 = T1 + datetime.timedelta(0, t_ser + t_move)
-                if moon_sep < ephem.degrees("10"):
+                if moon_sep < ephem.degrees(moon_dist):
                     print("Skip satellite %s in series %i, because of Moon sep = %s" %
                           (geo_list[i].NORAD, ser+1, str(moon_sep)))
+                T2 = T1
 
             # CHECK if some unplanned satellites are available now...
             # print (i, len(geo_list)-1)

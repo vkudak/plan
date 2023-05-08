@@ -376,7 +376,7 @@ for ser in range(0, series):
                     ha = geo_list[j].calc(Deren)
                     # print(j, geo_list[j].planed[ser], geo_list[j].geo.eclipsed)
                     if (geo_list[j].planed[ser] == 0) and (not geo_list[j].geo.eclipsed) and \
-                            (geo_list[j].geo.alt > ephem.degrees("10")):
+                            (geo_list[j].geo.alt > ephem.degrees("10")) and (moon_sep < ephem.degrees(moon_dist)):
                         T1 = T2
                         T2 = T1 + datetime.timedelta(0, t_ser + t_move)
                         T1_s = T1.strftime("%H%M%S")

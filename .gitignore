@@ -2,3 +2,4 @@
 /venv/
 /tle/
 .idea
+__pycache__/

@@ -1,4 +1,8 @@
 pyephem
-spacetrack
+spacetrack~=1.1.0
 n2yo-api
-tqdm
+tqdm~=4.66.1
+ephem~=4.1.5
+numpy~=2.2.0
+matplotlib~=3.9.3
+astropy~=6.1.7

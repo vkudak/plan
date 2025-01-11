@@ -193,6 +193,7 @@ Deren.lon = str(22.453751)  # Note that lon should be in string format
 Deren.lat = str(48.5635505)  # Note that lat should be in string format
 Deren.elev = 231  # Elevation in metres
 
+bad_sat = []
 for sat in obj:
     # print(sat)
     for tle in TLE:
@@ -206,11 +207,21 @@ for sat in obj:
             Deren.date = start_T.strftime("%Y/%m/%d %H:%M:%S")  # "2021/09/17 18:00:00" #'2003/3/23 H:M:S'
             try:
                 geo.compute(Deren)
+                ha = ephem.hours(Deren.sidereal_time() - geo.ra)  # -12 to +12.
+                geo_list.append(
+                                Satellite(NORAD=sat, HA=ha, TLE=tle,
+                                          priority=0, geo=geo, block=False,
+                                          planed=[0] * series)
+                )
             except Exception as E:
-                print(f"Error with Satellite NORAD {sat}\n", E)
+                age = Deren.date.datetime() - geo._epoch.datetime()
+                print(
+                    f"WARNING: Skip satellite {sat}, TLE too old "
+                    f"for predictions: {age.days} days."
+                )
+                bad_sat.append(sat)
                 # sys.exit()
 
-            ha = ephem.hours(Deren.sidereal_time() - geo.ra)  # -12 to +12.
             #                                                 To convert 0-24 do + h<0 : geo.ra + ephem.degrees("360.0")
             # if ha < 0:
             #     ha = ephem.hours(Deren.sidereal_time() - geo.ra + ephem.degrees("360.0"))
@@ -218,8 +229,12 @@ for sat in obj:
             #       ', ST=', Deren.sidereal_time(),
             #       "RA=", geo.ra,
             #       "HA=", ha, geo.eclipsed)
-            geo_list.append(Satellite(NORAD=sat, HA=ha, TLE=tle, priority=0, geo=geo, block=False, planed=[0] * series))
+            # geo_list.append(Satellite(NORAD=sat, HA=ha, TLE=tle, priority=0, geo=geo, block=False, planed=[0] * series))
             # geo_list[-1].planed = [0] * series
+
+for bad in bad_sat:
+    # remove satellites with problems in TLE
+    obj.remove(bad)
 
 for sat in obj:
     eps = True
@@ -227,7 +242,8 @@ for sat in obj:
         if sat == ge.NORAD:
             eps = False
     if eps:
-        print("Warning !!!!  Satellite %s has no TLE data" % sat)
+        print("WARNING: Satellite %s has no TLE data" % sat)
+
 
 print("Satellites planned = %i" % len(geo_list))
 geo_list.sort(key=lambda x: x.HA, reverse=False)  # sort satellites by HA

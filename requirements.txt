@@ -1,4 +1,4 @@
-pyephem
+skyfield~=1.49
 spacetrack~=1.1.0
 n2yo-api
 tqdm~=4.66.1

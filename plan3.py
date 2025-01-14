@@ -4,6 +4,9 @@
 # import ephem
 import argparse
 import configparser
+
+from astropy.coordinates import Angle
+from skyfield.api import EarthSatellite, load, wgs84, Topos, N, W, E, S
 from plan_io import *
 import glob
 # https://rhodesmill.org/skyfield/earth-satellites.html  ?????
@@ -163,14 +166,20 @@ else:
     str_v_plan = f"{n_frames}x{t_exp}:{exp_wait}*{band} @"
 
 
-ndate = datetime.datetime.now().strftime("%Y%m%d")
+ndate = datetime.now().strftime("%Y%m%d")
 f = open('object_' + C + '_' + ndate + '.list', 'w')
 
 for k, v in conf_res.items():
     f.write(f"# {k} = {v}\n")
 f.write("#\n")
 
-start_T, end_T = calc_T_twilight(h_sun=h_sun)
+
+site = wgs84.latlon(48.5635505, 22.453751, 231)
+[start_T, end_T] = calc_t_twilight(site,  h_sun=h_sun)
+# print(start_T.utc)
+# print(end_T.utc)
+# print(calc_T_twilight())
+
 # start_T = datetime.datetime(year=2023, month=2, day=9, hour=22, minute=0, second=0)
 
 obj = read_planed_objects(objects_file)
@@ -188,11 +197,6 @@ else:
 
 geo_list = []
 
-Deren = ephem.Observer()
-Deren.lon = str(22.453751)  # Note that lon should be in string format
-Deren.lat = str(48.5635505)  # Note that lat should be in string format
-Deren.elev = 231  # Elevation in metres
-
 bad_sat = []
 for sat in obj:
     # print(sat)
@@ -203,34 +207,34 @@ for sat in obj:
             tle[1] = fix_checksum(tle[1])  # fix checksum !!!!
             tle[2] = fix_checksum(tle[2])
 
-            geo = ephem.readtle(tle[0], tle[1], tle[2])
-            Deren.date = start_T.strftime("%Y/%m/%d %H:%M:%S")  # "2021/09/17 18:00:00" #'2003/3/23 H:M:S'
+            ts = load.timescale()
+            satellite = EarthSatellite(tle[1], tle[2], tle[0], ts)
+
             try:
-                geo.compute(Deren)
-                ha = ephem.hours(Deren.sidereal_time() - geo.ra)  # -12 to +12.
+                # geocentric = satellite.at(t)
+                difference = satellite - site
+                topocentric = difference.at(start_T)
+                # ra, dec, distance = topocentric.radec()
+                ha, dec, distance = topocentric.hadec()
+                # print(sat, ha.hours)
+                ha = ha.hours
+
+                # geo.compute(Deren)
+                # ha = ephem.hours(Deren.sidereal_time() - geo.ra)  # -12 to +12.
                 geo_list.append(
-                                Satellite(NORAD=sat, HA=ha, TLE=tle,
-                                          priority=0, geo=geo, block=False,
+                                Satellite(norad=sat, ha=ha, tle=tle,
+                                          priority=0, sat=satellite, block=False,
                                           planed=[0] * series)
                 )
             except Exception as E:
-                age = Deren.date.datetime() - geo._epoch.datetime()
+                # print(E, E.args)
+                age = ts.now() - satellite.epoch
                 print(
                     f"WARNING: Skip satellite {sat}, TLE too old "
                     f"for predictions: {age.days} days."
                 )
                 bad_sat.append(sat)
-                # sys.exit()
 
-            #                                                 To convert 0-24 do + h<0 : geo.ra + ephem.degrees("360.0")
-            # if ha < 0:
-            #     ha = ephem.hours(Deren.sidereal_time() - geo.ra + ephem.degrees("360.0"))
-            # print("NORAD=", sat, "DATE=", Deren.date,
-            #       ', ST=', Deren.sidereal_time(),
-            #       "RA=", geo.ra,
-            #       "HA=", ha, geo.eclipsed)
-            # geo_list.append(Satellite(NORAD=sat, HA=ha, TLE=tle, priority=0, geo=geo, block=False, planed=[0] * series))
-            # geo_list[-1].planed = [0] * series
 
 for bad in bad_sat:
     # remove satellites with problems in TLE
@@ -239,20 +243,20 @@ for bad in bad_sat:
 for sat in obj:
     eps = True
     for ge in geo_list:
-        if sat == ge.NORAD:
+        if sat == ge.norad:
             eps = False
     if eps:
         print("WARNING: Satellite %s has no TLE data" % sat)
 
 
 print("Satellites planned = %i" % len(geo_list))
-geo_list.sort(key=lambda x: x.HA, reverse=False)  # sort satellites by HA
+geo_list.sort(key=lambda x: x.ha, reverse=False)  # sort satellites by HA
 
-# print(geo_list[-1].NORAD)
+# print(geo_list[-1].norad)
 # print start_T
 # start_T = start_T - datetime.timedelta(days=1)  # ----------------------<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-print("Start date = %s" % start_T.strftime("%Y/%m/%d %H:%M:%S"))
-print("End date = %s" % end_T.strftime("%Y/%m/%d %H:%M:%S"))
+print("Start date = %s" % start_T.utc_datetime().strftime("%Y/%m/%d %H:%M:%S"))
+print("End date = %s" % end_T.utc_datetime().strftime("%Y/%m/%d %H:%M:%S"))
 
 f.write("# Start T = " + str(start_T) + "\n")
 
@@ -265,33 +269,36 @@ for ser in range(0, series):
     # geo_list.sort(key=lambda x: x.HA, reverse=False)  # sort satellites by HA  !!!!!!
     # sort again !!!!!!!!!!!!!!!!!!!!!!!!!
     for v in range(0, len(geo_list)):
-        Deren.date = T1.strftime("%Y/%m/%d %H:%M:%S")
-        geo_list[v].geo.compute(Deren)
-        ha = ephem.hours(Deren.sidereal_time() - geo_list[v].geo.ra)  # -12 to +12.
+        ha, dec = geo_list[v].calc_hadec(site, T1)
+        # ha = ephem.hours(Deren.sidereal_time() - geo_list[v].geo.ra)  # -12 to +12.
         ha2 = ha
-        if ha > ephem.hours("12:00:00"):
-            ha2 = ephem.hours(Deren.sidereal_time() - geo_list[v].geo.ra - ephem.degrees("360.0"))
-        if ha < ephem.hours("-12:00:00"):
-            ha2 = ephem.hours(Deren.sidereal_time() - geo_list[v].geo.ra + ephem.degrees("360.0"))
+
+        #  angle(hours=-1.5).hstr(format='{0}{1:02}:{2:02}:{3:02}')
+        # https://rhodesmill.org/skyfield/api-units.html
+
+        if ha._degrees > Angle(hours=12)._degrees: #ephem.hours("12:00:00"):
+            ha2 = ha - Angle(degrees=360.0)
+        if ha._degrees < Angle(hours=-12)._degrees: #ephem.hours("-12:00:00"):
+            ha2 = ha + Angle(degrees=360.0)
         # print(ha, ha2, ha > ephem.hours("12:00:00"))
-        geo_list[v].HA = ha2
-    geo_list.sort(key=lambda x: x.HA, reverse=False)  # sort satellites by HA  !!!!!!
+        geo_list[v].ha = ha2
+    geo_list.sort(key=lambda x: x.ha._degrees, reverse=False)  # sort satellites by HA  !!!!!!
     #
     # for v in range(0, len(geo_list)):
-    #     print(v, geo_list[v].NORAD, geo_list[v].HA)
+    #     print(v, geo_list[v].norad, geo_list[v].HA)
     # ###############################################################
 
     f.write("# series N = %i \n" % (ser + 1))
     if ser > 0:
-        T1 = T1 + + datetime.timedelta(0, t_between_ser)
+        T1 = T1 + timedelta(0, t_between_ser)
     for i in range(0, len(geo_list)):
-        # print(i, geo_list[i].NORAD, geo_list[i].geo.eclipsed, geo_list[i].geo.alt)
+        # print(i, geo_list[i].norad, geo_list[i].geo.eclipsed, geo_list[i].geo.alt)
         # sat = geo_list[i]
         if geo_list[i].planed[ser] == 0:
             if (geo_list[i] == geo_list[0]) and (geo_list[i].priority == 0) and (ser > 0):
-                T2 = T1 + datetime.timedelta(0, t_ser + t_move + 90)  # add time for safe move to first sat in series
+                T2 = T1 + timedelta(0, t_ser + t_move + 90)  # add time for safe move to first sat in series
             else:
-                T2 = T1 + datetime.timedelta(0, t_ser + t_move)  # 0 days and N seconds
+                T2 = T1 + timedelta(0, t_ser + t_move)  # 0 days and N seconds
                 # t_ser + t_move ---> time for frames capture + move telescope to next point
             if T1 > end_T:
                 print_park(T1, f, park_ra, park_dec)
@@ -299,36 +306,39 @@ for ser in range(0, series):
                 print("#####\nFinish. Sunrise, h_sun=%i..." % h_sun)
                 sys.exit()
             mag = "0.00"
-            T1_s = T1.strftime("%H%M%S")
-            T2_s = T2.strftime("%H%M%S")
+            T1_s = T1.utc_datetime().strftime("%H%M%S")
+            T2_s = T2.utc_datetime().strftime("%H%M%S")
 
-            Deren.date = T1.strftime("%Y/%m/%d %H:%M:%S")
-            ha = geo_list[i].calc(Deren)
+            # Deren.date = T1.utc_datetime().strftime("%Y/%m/%d %H:%M:%S")
+            ha = geo_list[i].calc(site, T1)
             # print("here...", ha, geo_list[i].HA)
-            ra, dec = geo_list[i].geo.ra, geo_list[i].geo.dec
-            ra_speed, dec_speed = calc_geo_speed(geo=geo_list[i], site=Deren, date=Deren.date, flag=C)
+            ra, dec = geo_list[i].sat.ra, geo_list[i].sat.dec
+            ra_speed, dec_speed = calc_geo_speed(geo=geo_list[i], site=site, date=T1, flag=C)
+
+            # !!!!!!!!!!!!!!!!!!!!!
+
             moon_sep = geo_list[i].calc_moon_angle(Deren)
             if (geo_list[i].geo.alt > ephem.degrees("10")) and (T1 < end_T) and (moon_sep > ephem.degrees(moon_dist)):
                 if not geo_list[i].geo.eclipsed:
                     ha_s, dec_s = corr_ha_dec_s(ha, geo_list[i].geo.dec)
                     if tracking and (abs(ra_speed) > min_track_speed or abs(dec_speed) > min_track_speed):
-                        my_line = (f"{geo_list[i].NORAD} = {flag} {ha_s}"
+                        my_line = (f"{geo_list[i].norad} = {flag} {ha_s}"
                                    f"({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) "
                                    f"{mag} {str_v_plan}{T1_s}-{T2_s}\n"
                                    )
                         f.write(my_line)
                     else:
-                        my_line = f"{geo_list[i].NORAD} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n"
+                        my_line = f"{geo_list[i].norad} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n"
                         f.write(my_line)
-                        # f.write(geo_list[i].NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
+                        # f.write(geo_list[i].norad + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
                         #         + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
                     # geo_list[i].block = True
                     geo_list[i].planed[ser] = 1
                 else:  # eclipsed
                     geo_list[i].priority = geo_list[i].priority + 1
-                    print("Satellite %s in series %i is eclipsed." % (geo_list[i].NORAD, ser+1))
+                    print("Satellite %s in series %i is eclipsed." % (geo_list[i].norad, ser+1))
                     if debug:
-                        f.write("# %s is eclipsed skipping..\n" % geo_list[i].NORAD)
+                        f.write("# %s is eclipsed skipping..\n" % geo_list[i].norad)
                     x = 1
                     sat = geo_list[i]
                     found = False
@@ -340,30 +350,30 @@ for ser in range(0, series):
                             ra, dec = sat.geo.ra, sat.geo.dec
                             if not sat.geo.eclipsed:
                                 found = True
-                            # print(sat.NORAD, sat.geo.eclipsed)
+                            # print(sat.norad, sat.geo.eclipsed)
                         else:
                             break
                         x = x + 1
 
                     if found:
                         if debug:
-                            f.write("# changed to %s \n" % sat.NORAD)
+                            f.write("# changed to %s \n" % sat.norad)
 
                         # T1 = T2
                         # T2 = T1 + datetime.timedelta(0, t_ser + t_move)
                         # T1_s = T1.strftime("%H%M%S")
                         # T2_s = T2.strftime("%H%M%S")
                         ha_s, dec_s = corr_ha_dec_s(ha, dec)
-                        print("Changing it to %s"% sat.NORAD)
+                        print("Changing it to %s"% sat.norad)
                         ra_speed, dec_speed = calc_geo_speed(geo=sat, site=Deren, date=Deren.date, flag=C)
                         if tracking and (abs(ra_speed)> min_track_speed or abs(dec_speed) > min_track_speed):
                             f.write(
-                                (f"{sat.NORAD} = {flag} {ha_s}({ra_speed:3.2f})  "
+                                (f"{sat.norad} = {flag} {ha_s}({ra_speed:3.2f})  "
                                  f"{dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n")
                             )
                         else:
-                            f.write(f"{sat.NORAD} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n")
-                            # sat.NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
+                            f.write(f"{sat.norad} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n")
+                            # sat.norad + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
                             #     + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
                         # geo_list[i + x - 1].block = True
                         geo_list[i + x - 1].planed[ser] = 1
@@ -371,15 +381,15 @@ for ser in range(0, series):
                 geo_list[i].priority = geo_list[i].priority + 1
                 if debug:
                     f.write("# skip satellite %s, h= %s, Moon sep=%s\n" %
-                            (geo_list[i].NORAD, str(geo_list[i].geo.alt), str(moon_sep)))
+                            (geo_list[i].norad, str(geo_list[i].geo.alt), str(moon_sep)))
                 if geo_list[i].geo.alt < ephem.degrees("10"):
                     print("Skip satellite %s in series %i, because of small elevation - h= %s" %
-                          (geo_list[i].NORAD, ser+1, str(geo_list[i].geo.alt)))
+                          (geo_list[i].norad, ser+1, str(geo_list[i].geo.alt)))
                     # T1 = T2
                     # T2 = T1 + datetime.timedelta(0, t_ser + t_move)
                 if moon_sep < ephem.degrees(moon_dist):
                     print("Skip satellite %s in series %i, because of Moon sep = %s" %
-                          (geo_list[i].NORAD, ser+1, str(moon_sep)))
+                          (geo_list[i].norad, ser+1, str(moon_sep)))
                 T2 = T1
 
             # CHECK if some unplanned satellites are available now...
@@ -399,18 +409,18 @@ for ser in range(0, series):
                         T2_s = T2.strftime("%H%M%S")
                         ha_s, dec_s = corr_ha_dec_s(ha, geo_list[j].geo.dec)
                         print("Satellite %s is out of eclipse, added to the end of series %i " %
-                              (geo_list[j].NORAD, ser + 1))
+                              (geo_list[j].norad, ser + 1))
                         ra_speed, dec_speed = calc_geo_speed(geo=geo_list[i], site=Deren, date=Deren.date, flag=C)
                         if tracking and (abs(ra_speed)> min_track_speed or abs(dec_speed) > min_track_speed):
                             f.write(
-                                (f"{geo_list[j].NORAD} = {flag} {ha_s}({ra_speed:3.2f})  "
+                                (f"{geo_list[j].norad} = {flag} {ha_s}({ra_speed:3.2f})  "
                                  f"{dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n"
                                  )
                             )
                         else:
                             f.write(
-                                f"{geo_list[j].NORAD} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n")
-                            # f.write(geo_list[j].NORAD + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
+                                f"{geo_list[j].norad} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n")
+                            # f.write(geo_list[j].norad + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
                             #         + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
                         geo_list[j].planed[ser] = 1
                         added = True

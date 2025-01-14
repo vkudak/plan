@@ -1,37 +1,53 @@
 import glob, os, sys
-import datetime
+from datetime import datetime, timedelta
 import math
 
 import ephem
+from skyfield import almanac
+from skyfield.api import EarthSatellite, load, wgs84, utc
+from skyfield.nutationlib import iau2000b
+from skyfield.units import Angle
 
 
 class Satellite:
-    def __init__(self, NORAD, HA, priority, TLE, geo, block, planed):
-        self.NORAD = NORAD
-        self.HA = HA  # HA at the first evening point
+    def __init__(self, norad, ha, priority, tle, sat, block, planed):
+        self.norad = norad
+        self.ha = ha  # HA at the first evening point
         self.priority = priority
-        self.TLE = TLE
-        self.geo = geo  # pyephem sat object
+        self.tle = tle
+        self.sat = sat  # sat object
         self.block = block
         self.planed = planed  # []  # [planed in ser like [1, 0, 0]]
 
-    def calc(self, site):
-        self.geo.compute(site)
-        ha_sort = ephem.hours(site.sidereal_time() - self.geo.ra)
-        # print(ha_sort)
-        self.HA = ha_sort
+    def calc_hadec(self,site, time):
+        difference = self.sat - site
+        topocentric = difference.at(time)
+        ha, dec, _ = topocentric.hadec()
+        return ha, dec
+
+    def calc(self, site, time):
+        difference = self.sat - site
+        topocentric = difference.at(time)
+        ha, dec, _ = topocentric.hadec()
+        ha_sort = ha.hours
+        self.ha = ha_sort
         if ha_sort < 0:
             # print(self.NORAD, str(ha_sort), str(ephem.hours(site.sidereal_time() - self.geo.ra + ephem.degrees("360.0"))))
-            return ephem.hours(site.sidereal_time() - self.geo.ra + ephem.degrees("360.0"))  # -01 to 23 hour
+            return ha_sort + Angle(degrees=360.0)  # -01 to 23 hour
         else:
             return ha_sort
-        # self.HA = ha_sort
-        # return ha
 
-    def calc_moon_angle(self, site):
-        self.geo.compute(site)
-        sc = (self.geo.ra, self.geo.dec)
-        moon = ephem.Moon()
+
+    def calc_moon_angle(self, site, time):
+        difference = self.sat - site
+        topocentric = difference.at(time)
+        ra, dec, _ = topocentric.radec()
+        sc = (ra, dec)
+        eph = load('de421.bsp')
+
+        # TODO: calc Moon Separation
+        # https://rhodesmill.org/skyfield/examples.html
+        moon = eph["Moon"]
         moon.compute(site)
         mc = (moon.ra, moon.dec)
         return ephem.separation(sc, mc)
@@ -52,13 +68,34 @@ def compute_checksum(line):
     return sum((int(c) if c.isdigit() else c == '-') for c in line[0:68]) % 10
 
 
+def calc_t_twilight(site, h_sun=-12):
+    """
+    Calculate twilight time according to h_sun
+    site: observational site. Create by api.Topos(lat, lon, elevation_m=elv) or api.wgs84(lat, lon, elevation_m=elv)
+    h_sun: elevation of Sun below horizon. Default is -12 degrees.
+    """
+    ts = load.timescale()
+    eph = load('de421.bsp')
+    observer = eph['Earth'] + site
+
+    now = datetime.now()
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=utc)
+    next_midnight = midnight + timedelta(days=2)
+    t0 = ts.from_datetime(midnight)
+    t1 = ts.from_datetime(next_midnight)
+
+    t_set, y = almanac.find_settings(observer, eph['Sun'], t0, t1, horizon_degrees=h_sun)
+    t_rise, y = almanac.find_risings(observer, eph['Sun'], t0, t1, horizon_degrees=h_sun)
+    return t_set[0], t_rise[1]
+
+
 def calc_T_twilight(h_sun=-12):
     import ephem
     # Make an observer
     fred = ephem.Observer()
 
     # PyEphem takes and returns only UTC times. 15:00 is noon in Fredericton
-    fred.date = datetime.datetime.now()
+    fred.date = datetime.now()
     fred.date = fred.date.datetime().replace(hour=0, minute=0, second=0)  # GET DATE AT hh=0 mm=0 ss=0
 
     # Location of Fredericton, Canada
@@ -81,7 +118,7 @@ def calc_T_twilight(h_sun=-12):
     # beg_twilight=fred.previous_rising(ephem.Sun(), use_center=True) #Begin civil twilight
     end_twilight = fred.next_setting(ephem.Sun(), use_center=True)  # End civil twilight
     start_twilight = fred.next_rising(ephem.Sun(), use_center=True)
-    return end_twilight.datetime(), start_twilight.datetime() + datetime.timedelta(1, 0)
+    return end_twilight.datetime(), start_twilight.datetime() + timedelta(1, 0)
 
 
 def read_tle(file_list):
@@ -243,7 +280,7 @@ def fDT(date, hh):
 
 
 def moon_phase():
-    date_str = datetime.datetime.now().strftime('%Y/%m/%d')
+    date_str = datetime.now().strftime('%Y/%m/%d')
     moon = ephem.Moon(date_str)
     return moon.moon_phase * 100
 
@@ -260,7 +297,7 @@ def calc_geo_speed(geo, site, date, flag):
 
     n_sec = 60
     # moment 2
-    site.date = site.date.datetime() + datetime.timedelta(seconds=n_sec)
+    site.date = site.date.datetime() + timedelta(seconds=n_sec)
     ha2 = geo.calc(site)
     ra2, dec2 = geo.geo.ra, geo.geo.dec
 

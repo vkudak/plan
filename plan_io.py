@@ -45,7 +45,7 @@ class Satellite:
         sc = (ra, dec)
         eph = load('de421.bsp')
 
-        # TODO: calc Moon Separation
+        # TODO: calc Moon Separation here
         # https://rhodesmill.org/skyfield/examples.html
         moon = eph["Moon"]
         moon.compute(site)

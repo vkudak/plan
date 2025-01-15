@@ -1,5 +1,5 @@
 import glob, os, sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import math
 
 import ephem
@@ -7,50 +7,64 @@ from skyfield import almanac
 from skyfield.api import EarthSatellite, load, wgs84, utc
 from skyfield.nutationlib import iau2000b
 from skyfield.units import Angle
+from skyfield.framelib import ecliptic_frame
 
 
 class Satellite:
-    def __init__(self, norad, ha, priority, tle, sat, block, planed):
+    def __init__(self, norad, priority, tle, sat, block, planed):
         self.norad = norad
-        self.ha = ha  # HA at the first evening point
+        self.ha_sort = 0  # HA at the first evening point
+        self.pos = {}
         self.priority = priority
         self.tle = tle
         self.sat = sat  # sat object
         self.block = block
         self.planed = planed  # []  # [planed in ser like [1, 0, 0]]
 
-    def calc_hadec(self,site, time):
+    # def norm_ha(self):
+    #     ha = self.ha
+    #     if ha.hours < 0:
+    #         ha = ha.hours + Angle(hours=24).hours
+    #         return Angle(hours=ha)
+    #     else:
+    #         return ha
+
+    def calc_pos(self, site, time):
         difference = self.sat - site
         topocentric = difference.at(time)
         ha, dec, _ = topocentric.hadec()
-        return ha, dec
-
-    def calc(self, site, time):
-        difference = self.sat - site
-        topocentric = difference.at(time)
-        ha, dec, _ = topocentric.hadec()
-        ha_sort = ha.hours
-        self.ha = ha_sort
-        if ha_sort < 0:
-            # print(self.NORAD, str(ha_sort), str(ephem.hours(site.sidereal_time() - self.geo.ra + ephem.degrees("360.0"))))
-            return ha_sort + Angle(degrees=360.0)  # -01 to 23 hour
-        else:
-            return ha_sort
-
-
-    def calc_moon_angle(self, site, time):
-        difference = self.sat - site
-        topocentric = difference.at(time)
         ra, dec, _ = topocentric.radec()
-        sc = (ra, dec)
-        eph = load('de421.bsp')
+        alt, az, _ = topocentric.altaz()
+        self.ha_sort = ha
+        self.pos = {'ha':ha, 'dec':dec, 'ra':ra, 'alt':alt, 'az':az}
+        return self.pos
 
-        # TODO: calc Moon Separation here
+    def calc_moon_sep(self, site, time):
+        # ra, _ , dec = self.calc_pos(site, time)
+        # sc = (ra, dec)
+        eph = load('de421.bsp')
+        moon = eph['Moon']
+        earth = eph['Earth']
+
+        difference = self.sat - site
+        topocentric = difference.at(time)
+
+        # dif_moon = moon - site
+        # top_moon = dif_moon.at(time)
+        m = earth.at(time).observe(moon)
+
+        sep = topocentric.separation_from(m)
+
+        # https://rhodesmill.org/skyfield/api-position.html#skyfield.positionlib.ICRF.separation_from
         # https://rhodesmill.org/skyfield/examples.html
-        moon = eph["Moon"]
-        moon.compute(site)
-        mc = (moon.ra, moon.dec)
-        return ephem.separation(sc, mc)
+        # print(sep.degrees)
+        # sys.exit()
+
+        return sep.degrees
+        # moon = eph["Moon"]
+        # moon.compute(site)
+        # mc = (moon.ra, moon.dec)
+        # return ephem.separation(sc, mc)
 
 
 def fix_checksum(line):
@@ -87,38 +101,6 @@ def calc_t_twilight(site, h_sun=-12):
     t_set, y = almanac.find_settings(observer, eph['Sun'], t0, t1, horizon_degrees=h_sun)
     t_rise, y = almanac.find_risings(observer, eph['Sun'], t0, t1, horizon_degrees=h_sun)
     return t_set[0], t_rise[1]
-
-
-def calc_T_twilight(h_sun=-12):
-    import ephem
-    # Make an observer
-    fred = ephem.Observer()
-
-    # PyEphem takes and returns only UTC times. 15:00 is noon in Fredericton
-    fred.date = datetime.now()
-    fred.date = fred.date.datetime().replace(hour=0, minute=0, second=0)  # GET DATE AT hh=0 mm=0 ss=0
-
-    # Location of Fredericton, Canada
-    fred.lon = str(22.453751)  # Note that lon should be in string format
-    fred.lat = str(48.5635505)  # Note that lat should be in string format
-
-    # Elevation of Fredericton, Canada, in metres
-    fred.elev = 231
-
-    # To get U.S. Naval Astronomical Almanac values, use these settings
-    fred.pressure = 0
-    fred.horizon = '-0:34'
-
-    # sunrise=fred.previous_rising(ephem.Sun()) #Sunrise
-    # noon   =fred.next_transit   (ephem.Sun(), start=sunrise) #Solar noon
-    # sunset =fred.next_setting   (ephem.Sun()) #Sunset
-
-    # We relocate the horizon to get twilight times
-    fred.horizon = str(h_sun)#'-10'  # -6=civil twilight, -12=nautical, -18=astronomical
-    # beg_twilight=fred.previous_rising(ephem.Sun(), use_center=True) #Begin civil twilight
-    end_twilight = fred.next_setting(ephem.Sun(), use_center=True)  # End civil twilight
-    start_twilight = fred.next_rising(ephem.Sun(), use_center=True)
-    return end_twilight.datetime(), start_twilight.datetime() + timedelta(1, 0)
 
 
 def read_tle(file_list):
@@ -202,108 +184,114 @@ def read_planed_objects(filename):
     return obj
 
 
-def T_to_dec(UTCs):
-    h = UTCs[:2]
-    m = UTCs[2:4]
-    sec = UTCs[4:]
-    UTC = float(h) + float(m) / 60 + float(sec) / 3600
-    return UTC
+# def T_to_dec(UTCs):
+#     h = UTCs[:2]
+#     m = UTCs[2:4]
+#     sec = UTCs[4:]
+#     UTC = float(h) + float(m) / 60 + float(sec) / 3600
+#     return UTC
 
 
 def corr_ha_dec_s(ha, dec):
-    ha_s = "%s" % ha
-    ha_s = ha_s.replace(':', '')
-    dec_s = "%s" % dec
-    dec_s = dec_s.replace(':', '')
+    if ha.hours < 0:
+        ha = ha.hours + Angle(hours=24).hours
+        ha = Angle(hours=ha)
+    ha_s = ha.hstr(format='{0}{1:02}{2:02}{3:02}.{4:0{5}}')
+    dec_s = dec.dstr(format='{0}{1:02}{2:02}{3:02}.{4:0{5}}')
 
-    # HA leading zero correction
-    if len(ha_s.split(".")[0]) < 6:
-        ha_s = "0"+"".join(ha_s)
-
-    # DEC leading zero correction  -6 -> -06
-    dec2 = float(dec_s)
-    if abs(dec2) < 100000:
-        if dec < 0:
-            dec_s = list(dec_s)
-            dec_s.insert(1, "0")
-        else:
-            dec_s = list(dec_s)
-            dec_s.insert(0, "0")
-        dec_s = "".join(dec_s)
-    if dec2 > 0:
-        dec_s = "+" + dec_s
     return ha_s, dec_s
 
-def addT(UTCs, dt):
-    # dt in sec
-    # print addT('010503', 600)
-    h = UTCs[:2]
-    m = UTCs[2:4]
-    sec = UTCs[4:]
-    # print h, m, sec
-    hi, mi, seci = int(h), int(m), int(sec)
-    seci = seci + dt
-    while seci > 59:
-        seci = seci - 60
-        mi = mi + 1
+# def addT(UTCs, dt):
+#     # dt in sec
+#     # print addT('010503', 600)
+#     h = UTCs[:2]
+#     m = UTCs[2:4]
+#     sec = UTCs[4:]
+#     # print h, m, sec
+#     hi, mi, seci = int(h), int(m), int(sec)
+#     seci = seci + dt
+#     while seci > 59:
+#         seci = seci - 60
+#         mi = mi + 1
+#
+#     while mi > 59:
+#         mi = mi - 60
+#         hi = hi + 1
+#
+#     while hi > 23:
+#         hi = hi - 24
+#
+#     sec = str(seci)
+#     if seci < 10:
+#         sec = '0' + sec
+#     m = str(mi)
+#     if mi < 10:
+#         m = '0' + m
+#     h = str(hi)
+#     if hi < 10:
+#         h = '0' + h
+#
+#     UTCn = h + m + sec
+#     return UTCn
 
-    while mi > 59:
-        mi = mi - 60
-        hi = hi + 1
 
-    while hi > 23:
-        hi = hi - 24
-
-    sec = str(seci)
-    if seci < 10:
-        sec = '0' + sec
-    m = str(mi)
-    if mi < 10:
-        m = '0' + m
-    h = str(hi)
-    if hi < 10:
-        h = '0' + h
-
-    UTCn = h + m + sec
-    return UTCn
-
-
-def fDT(date, hh):
-    # combine date and UTC
-    date_part = datetime.datetime.strptime(date, '%Y-%m-%d')
-    # hour = int(hh)
-    # minuts = int((hh - hour) * 60)
-    # sec = (minuts - ((hh - hour) * 60)) * 60
-    hour, minuts, sec = hh.split(':')
-    DT = datetime.datetime.combine(date_part, datetime.time(int(hour), int(minuts), int(sec)))
-    return DT
+# def fDT(date, hh):
+#     # combine date and UTC
+#     date_part = datetime.strptime(date, '%Y-%m-%d')
+#     # hour = int(hh)
+#     # minuts = int((hh - hour) * 60)
+#     # sec = (minuts - ((hh - hour) * 60)) * 60
+#     hour, minutes, sec = hh.split(':')
+#     dt = datetime.combine(date_part, time(int(hour), int(minutes), int(sec)))
+#     return dt
 
 
 def moon_phase():
-    date_str = datetime.now().strftime('%Y/%m/%d')
-    moon = ephem.Moon(date_str)
-    return moon.moon_phase * 100
+    """
+    Get Moon phase and illumination percents for NOW
+    """
+    ts = load.timescale()
+    now = datetime.now()
+    now = now.replace(tzinfo=utc)
+    t = ts.from_datetime(now)
+
+    eph = load('de421.bsp')
+    sun, moon, earth = eph['sun'], eph['moon'], eph['earth']
+
+    e = earth.at(t)
+    s = e.observe(sun).apparent()
+    m = e.observe(moon).apparent()
+
+    # _, slon, _ = s.frame_latlon(ecliptic_frame)
+    # _, mlon, _ = m.frame_latlon(ecliptic_frame)
+    # phase = (mlon.degrees - slon.degrees) % 360.0
+
+    percent = 100.0 * m.fraction_illuminated(sun)
+
+    # print('Phase (0°–360°): {0:.1f}'.format(phase))
+    # print('Percent illuminated: {0:.1f}%'.format(percent))
+
+    return percent
 
 
-def deg_to_float(deg):
-    return float(math.degrees(deg))
+# def deg_to_float(deg):
+#     return float(math.degrees(deg))
 
 
-def calc_geo_speed(geo, site, date, flag):
+def calc_geo_speed(msat, site, t0, flag):
     # Deren.date = T1.strftime("%Y/%m/%d %H:%M:%S")
-    site.date = date
-    ha = geo.calc(site)
-    ra, dec = geo.geo.ra, geo.geo.dec
+    pos1 = msat.calc_pos(site, t0)
+    ha1, ra1, dec1 = pos1["ha"], pos1["ra"], pos1["dec"]
 
     n_sec = 60
     # moment 2
-    site.date = site.date.datetime() + timedelta(seconds=n_sec)
-    ha2 = geo.calc(site)
-    ra2, dec2 = geo.geo.ra, geo.geo.dec
+    t2 = t0 + timedelta(seconds=n_sec)
+    pos2 = msat.calc_pos(site, t2)
+    ha2, ra2, dec2 = pos2["ha"], pos2["ra"], pos2["dec"]
 
-    ra_speed = (deg_to_float(ephem.degrees(ra2)) - deg_to_float(ephem.degrees(ra))) * 60 * 60
-    ha_speed = (deg_to_float(ephem.degrees(ha2)) - deg_to_float(ephem.degrees(ha))) * 60 * 60
-    dec_speed = (deg_to_float(ephem.degrees(dec2)) - deg_to_float(ephem.degrees(dec))) * 60 * 60
+    ra_speed = (ra2._degrees - ra1._degrees) * 60 * 60
+    ha_speed = (ha2._degrees - ha1._degrees) * 60 * 60
+    dec_speed = (dec2.degrees - dec1.degrees) * 60 * 60
 
     if flag == "HA":
         # ha_speed = (ha2 - ha) #/ 100

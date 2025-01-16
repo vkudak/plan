@@ -1,9 +1,75 @@
 import glob, os, sys
 from datetime import datetime, timedelta
+import configparser
 
 from skyfield import almanac
-from skyfield.api import EarthSatellite, load, wgs84, utc
+from skyfield.api import load, utc
 from skyfield.units import Angle
+
+
+def read_config(conf_file):
+    """
+    :param conf_file: name of config file
+    :return: dict of parameters
+    """
+    config = configparser.ConfigParser(inline_comment_prefixes="#")
+
+    if os.path.isfile(conf_file):
+        try:
+            config.read(conf_file)
+
+            c_debug = config.getboolean('global', 'debug', fallback=False)
+            c_site_lat = config.getfloat('site', 'site_lat')
+            c_site_lon = config.getfloat('site', 'site_lon')
+            c_site_elev = config.getfloat('site', 'site_elev')
+
+            c_plan_type = config.get("options", 'plan_type', fallback="HA")
+            c_h_sun = config.getfloat('options', 'h_sun', fallback=-12)
+            c_series = config.getint('options', 'series', fallback=7)
+            c_t_move = config.getint('options', 't_move', fallback=40)
+            c_t_exp = config.getfloat('options', 't_exp', fallback=12)
+            c_n_frames = config.getint('options', 'n_frames', fallback=10)
+            c_exp_wait = config.getint('options', 'exp_wait', fallback=0)
+            c_t_between_ser = config.getfloat('options', 't_between_ser', fallback=300)
+            c_track = config.getboolean('options', 'track', fallback=False)
+            c_min_track_speed = config.getfloat('options', 'min_track_speed', fallback=0.1)
+            c_band = config.get("options", 'filter', fallback=None)
+
+            c_park = config.getboolean('park', 'park', fallback=True)
+            c_park_ra = config.get("park", 'park_RA', fallback="194821.45")
+            c_park_dec = config.get("park", 'park_DEC', fallback="-084724.7")
+
+            c_moon1 = config.getfloat('Moon', 'dist1', fallback=30)
+            c_moon2 = config.getfloat('Moon', 'dist2', fallback=40)
+
+            return {'debug': c_debug,
+                    'site_lat': c_site_lat,
+                    'site_lon': c_site_lon,
+                    'site_elev': c_site_elev,
+                    'plan_type': c_plan_type,
+                    'h_sun': c_h_sun,
+                    'series': c_series,
+                    't_move': c_t_move,
+                    't_exp': c_t_exp,
+                    'n_frames': c_n_frames,
+                    'exp_wait': c_exp_wait,
+                    't_between_ser': c_t_between_ser,
+                    "track": c_track,
+                    "min_track_speed": c_min_track_speed,
+                    "band": c_band,
+                    'park': c_park,
+                    'park_ra': c_park_ra,
+                    'park_dec': c_park_dec,
+                    'moon_dist1': c_moon1,
+                    'moon_dist2': c_moon2,
+                    }
+
+        except Exception as E:
+            print("Error in INI file\n", E)
+            sys.exit()
+    else:
+        print("Error. Cant find config_sat.ini")
+        sys.exit()
 
 
 class Satellite:
@@ -17,14 +83,6 @@ class Satellite:
         self.block = block
         self.planed = planed  # []  # [planed in ser like [1, 0, 0]]
 
-    # def norm_ha(self):
-    #     ha = self.ha
-    #     if ha.hours < 0:
-    #         ha = ha.hours + Angle(hours=24).hours
-    #         return Angle(hours=ha)
-    #     else:
-    #         return ha
-
     def calc_pos(self, site, t):
         # ha, dec,_ = self.sat.at(t).hadec()
         difference = self.sat - site
@@ -35,6 +93,30 @@ class Satellite:
         self.ha_sort = ha
         self.pos = {'ha':ha, 'dec':dec, 'ra':ra, 'alt':alt, 'az':az}
         return self.pos
+
+    def calc_sat_phase(self, site, t):
+        """
+        # https://github.com/skyfielders/python-skyfield/discussions/607
+        Calculate phase angle of Satellite
+        site: Observation point load.wgs84() object
+        t: Time
+        return: Satellite phase angle
+        """
+        eph = load('de421.bsp')
+        earth = eph['earth']
+        sun = eph['sun']
+
+        ssb_obs = earth + site
+        ssb_satellite = earth + self.sat
+        # sun_position = s.at(t).observe(sun)
+        # earth_position = s.at(t).observe(earth)
+        # phase_angle = sun_position.separation_from(earth_position)
+
+        topocentric_sat_obs = ssb_satellite.at(t).observe(ssb_obs).apparent()
+        topocentric_sat_sun = ssb_satellite.at(t).observe(sun).apparent()
+        phase_angle = topocentric_sat_obs.separation_from(topocentric_sat_sun)
+        return phase_angle.degrees
+
 
     def calc_moon_sep(self, site, t):
         # ra, _ , dec = self.calc_pos(site, time)
@@ -57,11 +139,7 @@ class Satellite:
         # print(sep.degrees)
         # sys.exit()
 
-        return sep.degrees
-        # moon = eph["Moon"]
-        # moon.compute(site)
-        # mc = (moon.ra, moon.dec)
-        # return ephem.separation(sc, mc)
+        return sep
 
 
 def fix_checksum(line):
@@ -256,7 +334,7 @@ def moon_phase():
     sun, moon, earth = eph['sun'], eph['moon'], eph['earth']
 
     e = earth.at(t)
-    s = e.observe(sun).apparent()
+    # s = e.observe(sun).apparent()
     m = e.observe(moon).apparent()
 
     # _, slon, _ = s.frame_latlon(ecliptic_frame)
@@ -296,3 +374,27 @@ def calc_geo_speed(msat, site, t0, flag):
     else:
         # ra_speed = (ra2 - ra) #/ 100
         return ra_speed / n_sec, dec_speed / n_sec
+
+
+def write_plan(file, tracking, min_track_speed, ra_speed, dec_speed, geo, flag, T1_s, T2_s, str_v_plan):
+    mag = "0.00"
+    ha, dec = geo.pos["ha"], geo.pos['dec']
+    ha_s, dec_s = corr_ha_dec_s(ha, dec)
+    if tracking and (abs(ra_speed) > min_track_speed or abs(dec_speed) > min_track_speed):
+        my_line = (f"{geo.norad} = {flag} {ha_s}"
+                   f"({ra_speed:>+4.2f})  {dec_s}({dec_speed:>+4.2f}) "
+                   f"{mag} {str_v_plan}{T1_s}-{T2_s}\n"
+                   )
+        file.write(my_line)
+    else:
+        my_line = f"{geo.norad} = {flag} {ha_s:<16}  {dec_s:<16} {mag} {str_v_plan}{T1_s}-{T2_s}\n"
+        file.write(my_line)
+
+
+def print_park(file, t1, park_ra, park_dec, t_exp, exp_wait):
+    mag = "0.00"
+    t1_s = t1.utc_datetime().strftime("%H%M%S")
+    t2 = t1 + timedelta(0, 30)
+    t2_s = t2.utc_datetime().strftime("%H%M%S")
+    str_v_plan_p = f" 1x{t_exp:3.1f}:{exp_wait} @"
+    file.write(f"park  = HA {park_ra:<16}  {park_dec:<16} {mag} {str_v_plan_p}{t1_s}-{t2_s}\n")

@@ -1,12 +1,7 @@
-# import numpy as np
-# import glob, os, sys
-# import datetime
-# import ephem
 import argparse
-import configparser
 
-from astropy.coordinates import Angle
-from skyfield.api import EarthSatellite, load, wgs84, Topos, N, W, E, S
+from skyfield.api import EarthSatellite, wgs84
+
 from plan_io import *
 import glob
 # https://rhodesmill.org/skyfield/earth-satellites.html  ?????
@@ -26,80 +21,6 @@ parser = argparse.ArgumentParser(description='Plan of GSO observation')
 parser.add_argument('-c', '--config', help='Specify config file', required=False)
 parser.add_argument('-o', '--objects', help='Specify file with objects', required=False)
 args = vars(parser.parse_args())
-
-
-def read_config(conf_file):
-    """
-    :param conf_file: name of config file
-    :return: dict of parameters
-    """
-    config = configparser.ConfigParser(inline_comment_prefixes="#")
-
-    if os.path.isfile(conf_file):
-        try:
-            config.read(conf_file)
-
-            c_debug = config.getboolean('global', 'debug', fallback=False)
-
-            c_plan_type = config.get("options", 'plan_type', fallback="HA")
-            c_h_sun = config.getfloat('options', 'h_sun', fallback=-12)
-            c_series = config.getint('options', 'series', fallback=7)
-            c_t_move = config.getint('options', 't_move', fallback=40)
-            c_t_exp = config.getfloat('options', 't_exp', fallback=12)
-            c_n_frames = config.getint('options', 'n_frames', fallback=10)
-            c_exp_wait = config.getint('options', 'exp_wait', fallback=0)
-            c_t_between_ser = config.getfloat('options', 't_between_ser', fallback=300)
-            c_track = config.getboolean('options', 'track', fallback=False)
-            c_min_track_speed = config.getfloat('options', 'min_track_speed', fallback=0.1)
-            c_band = config.get("options", 'filter', fallback=None)
-
-            c_park = config.getboolean('park', 'park', fallback=True)
-            c_park_ra = config.get("park", 'park_RA', fallback="194821.45")
-            c_park_dec = config.get("park", 'park_DEC', fallback="-084724.7")
-
-            c_moon1 = config.getfloat('Moon', 'dist1', fallback=30)
-            c_moon2 = config.getfloat('Moon', 'dist2', fallback=40)
-
-            return {'debug': c_debug,
-                    'plan_type': c_plan_type,
-                    'h_sun': c_h_sun,
-                    'series': c_series,
-                    't_move': c_t_move,
-                    't_exp': c_t_exp,
-                    'n_frames': c_n_frames,
-                    'exp_wait': c_exp_wait,
-                    't_between_ser': c_t_between_ser,
-                    "track": c_track,
-                    "min_track_speed": c_min_track_speed,
-                    "band": c_band,
-                    'park': c_park,
-                    'park_ra': c_park_ra,
-                    'park_dec': c_park_dec,
-                    'moon_dist1': c_moon1,
-                    'moon_dist2': c_moon2,
-                    }
-
-        except Exception as E:
-            print("Error in INI file\n", E)
-            sys.exit()
-    else:
-        print("Error. Cant find config_sat.ini")
-        sys.exit()
-
-
-def print_park(T1, file, park_ra, park_dec):
-    if park:
-        T1_s = T1.utc_datetime().strftime("%H%M%S")
-        T2 = T1 + timedelta(0, 30)
-        T2_s = T2.utc_datetime().strftime("%H%M%S")
-        park_radec = park_ra + "  " + park_dec
-        str_v_plan_p = str(1) + "x" + str(t_exp) + " @"
-        file.write('park  = ' + "HA" + ' ' + park_radec + '  ' + mag + ' '
-                                    + str_v_plan_p + T1_s + '-' + T2_s + '   ' + '\n')
-        # file.write('park  = ' + "HA" + ' ' + '194821.45  -084724.7' + '  ' + mag + ' '
-        #                             + str_v_plan_p + T1_s + '-' + T2_s + '   ' + '\n')
-        # park  = HA 194818.02  -064718.6  0.00 7x12.0:30 @011036-011251
-
 
 # debug = False  # True
 # park = True
@@ -129,6 +50,9 @@ else:
 conf_res = read_config(conf_file=config_name)
 
 debug = conf_res["debug"]
+site_lat = conf_res["site_lat"]
+site_lon = conf_res["site_lon"]
+site_elev = conf_res["site_elev"]
 park = conf_res["park"]
 C = conf_res["plan_type"]  # HA
 h_sun = conf_res["h_sun"]
@@ -175,7 +99,7 @@ f.write("#\n")
 
 mag = "0.00"
 eph = load('de421.bsp')
-site = wgs84.latlon(48.5635505, 22.453751, 231)
+site = wgs84.latlon(site_lat, site_lon, site_elev)
 [start_T, end_T] = calc_t_twilight(site,  h_sun=h_sun)
 # print(start_T.utc)
 # print(end_T.utc)
@@ -254,7 +178,9 @@ f.write("# Start T = " + start_T.utc_datetime().strftime("%Y-%m-%d %H:%M:%S.%f")
 print("Start...")
 flag = C
 T1 = start_T
-# series = 1
+# series = 2
+
+
 for ser in range(0, series):
     print("##################---Ser #%i" % (ser + 1))
     for msat in geo_list:
@@ -296,7 +222,7 @@ for ser in range(0, series):
             moon_sep = geo_list[i].calc_moon_sep(site, T1)
             # geo_list[i].calc_pos(site, T1)
 
-            if (geo_list[i].pos['alt'].degrees > 10) and (T1 < end_T) and (moon_sep > float(moon_dist)):
+            if (geo_list[i].pos['alt'].degrees > 10) and (T1 < end_T) and (moon_sep.degrees > float(moon_dist)):
                 if geo_list[i].sat.at(T1).is_sunlit(eph):
                     # geo_list[i].calc_pos(site, T1)
                     ha = geo_list[i].pos["ha"]
@@ -312,18 +238,19 @@ for ser in range(0, series):
 
                     # print("here", geo_list[i].norad)
 
-                    if tracking and (abs(ra_speed) > min_track_speed or abs(dec_speed) > min_track_speed):
-                        my_line = (f"{geo_list[i].norad} = {flag} {ha_s}"
-                                   f"({ra_speed:3.2f})  {dec_s}({dec_speed:3.2f}) "
-                                   f"{mag} {str_v_plan}{T1_s}-{T2_s}\n"
-                                   )
-                        f.write(my_line)
-                    else:
-                        my_line = f"{geo_list[i].norad} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n"
-                        f.write(my_line)
-                        # f.write(geo_list[i].norad + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
-                        #         + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
-                    # geo_list[i].block = True
+                    write_plan(
+                        file=f,
+                        tracking=tracking,
+                        min_track_speed=min_track_speed,
+                        ra_speed=ra_speed,
+                        dec_speed=dec_speed,
+                        geo = geo_list[i],
+                        flag = flag,
+                        T1_s = T1_s,
+                        T2_s = T2_s,
+                        str_v_plan = str_v_plan
+                    )
+
                     geo_list[i].planed[ser] = 1
                 else:  # eclipsed
                     geo_list[i].priority = geo_list[i].priority + 1
@@ -353,16 +280,18 @@ for ser in range(0, series):
                         ha_s, dec_s = corr_ha_dec_s(ha, dec)
                         print("Changing it to %s"% sat.norad)
                         ra_speed, dec_speed = calc_geo_speed(sat, site, T1, flag=C)
-                        if tracking and (abs(ra_speed)> min_track_speed or abs(dec_speed) > min_track_speed):
-                            f.write(
-                                (f"{sat.norad} = {flag} {ha_s}({ra_speed:3.2f})  "
-                                 f"{dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n")
-                            )
-                        else:
-                            f.write(f"{sat.norad} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n")
-                            # sat.norad + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
-                            #     + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
-                        # geo_list[i + x - 1].block = True
+                        write_plan(
+                            file=f,
+                            tracking=tracking,
+                            min_track_speed=min_track_speed,
+                            ra_speed=ra_speed,
+                            dec_speed=dec_speed,
+                            geo=geo_list[i],
+                            flag=flag,
+                            T1_s=T1_s,
+                            T2_s=T2_s,
+                            str_v_plan=str_v_plan
+                        )
                         geo_list[i + x - 1].planed[ser] = 1
             else:
                 geo_list[i].priority = geo_list[i].priority + 1
@@ -370,11 +299,11 @@ for ser in range(0, series):
                     f.write("# skip satellite %s, h= %s, Moon sep=%s\n" %
                             (geo_list[i].norad, str(geo_list[i].pos['alt']), str(moon_sep)))
                 if geo_list[i].pos['alt'].degrees < 10:
-                    print("Skip satellite %s in series %i, because of small elevation - h= %s" %
-                          (geo_list[i].norad, ser+1, str(geo_list[i].pos['alt'])))
-                if moon_sep < float(moon_dist):
+                    print("Skip satellite %s in series %i, because of small elevation - h=%s" %
+                          (geo_list[i].norad, ser+1, geo_list[i].pos['alt'].dstr(format='{0:+>1}{1:02}:{2:02}:{3:02}')))
+                if moon_sep.degrees < float(moon_dist):
                     print("Skip satellite %s in series %i, because of Moon sep = %s" %
-                          (geo_list[i].norad, ser+1, str(moon_sep)))
+                          (geo_list[i].norad, ser+1, moon_sep.dstr(format='{0}{1:02}:{2:02}:{3:02} degrees')))
                 T2 = T1
 
             # CHECK if some unplanned satellites are available now...
@@ -385,7 +314,7 @@ for ser in range(0, series):
                 for j in range(0, len(geo_list)):
                     # ha = geo_list[j].calc_pos(site, T1)['ha']
                     if (geo_list[j].planed[ser] == 0) and (geo_list[j].sat.at(T1).is_sunlit(eph)) and \
-                            (geo_list[j].pos["alt"].degrees > 10) and (moon_sep < float(moon_dist)):
+                            (geo_list[j].pos["alt"].degrees > 10) and (moon_sep.degrees < float(moon_dist)):
                         T1 = T2
                         T2 = T1 + timedelta(0, t_ser + t_move)
                         T1_s = T1.utc_datetime().strftime("%H%M%S")
@@ -396,24 +325,26 @@ for ser in range(0, series):
                         print("Satellite %s is out of eclipse, added to the end of series %i " %
                               (geo_list[j].norad, ser + 1))
                         ra_speed, dec_speed = calc_geo_speed(geo_list[i], site, T1, flag=C)
-                        if tracking and (abs(ra_speed)> min_track_speed or abs(dec_speed) > min_track_speed):
-                            f.write(
-                                (f"{geo_list[j].norad} = {flag} {ha_s}({ra_speed:3.2f})  "
-                                 f"{dec_s}({dec_speed:3.2f}) {mag} {str_v_plan}{T1_s}-{T2_s}\n"
-                                 )
-                            )
-                        else:
-                            f.write(
-                                f"{geo_list[j].norad} = {flag} {ha_s}  {dec_s} {mag} {str_v_plan}{T1_s}-{T2_s}\n")
-                            # f.write(geo_list[j].norad + ' = ' + flag + ' ' + ha_s + '  ' + dec_s + '  ' + mag + ' '
-                            #         + str_v_plan + T1_s + '-' + T2_s + '   ' + '\n')
+                        write_plan(
+                            file=f,
+                            tracking=tracking,
+                            min_track_speed=min_track_speed,
+                            ra_speed=ra_speed,
+                            dec_speed=dec_speed,
+                            geo=geo_list[i],
+                            flag=flag,
+                            T1_s=T1_s,
+                            T2_s=T2_s,
+                            str_v_plan=str_v_plan
+                        )
                         geo_list[j].planed[ser] = 1
                         added = True
             ###
-            if (geo_list[i].pos["alt"].degrees > 10) and (moon_sep > float("10")) and (not added):
+            if (geo_list[i].pos["alt"].degrees > 10) and (moon_sep.degrees > float("10")) and (not added):
                 T1 = T2
             if added:
                 T1 = T2
-print_park(T1, f, park_ra, park_dec)
+if park:
+    print_park(f, T1, park_ra, park_dec, t_exp, exp_wait)
 print("#####\nFinish. %i series calculated." % series)
 f.close()

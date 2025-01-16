@@ -1,13 +1,9 @@
 import glob, os, sys
-from datetime import datetime, timedelta, time
-import math
+from datetime import datetime, timedelta
 
-import ephem
 from skyfield import almanac
 from skyfield.api import EarthSatellite, load, wgs84, utc
-from skyfield.nutationlib import iau2000b
 from skyfield.units import Angle
-from skyfield.framelib import ecliptic_frame
 
 
 class Satellite:
@@ -29,17 +25,18 @@ class Satellite:
     #     else:
     #         return ha
 
-    def calc_pos(self, site, time):
+    def calc_pos(self, site, t):
+        # ha, dec,_ = self.sat.at(t).hadec()
         difference = self.sat - site
-        topocentric = difference.at(time)
+        topocentric = difference.at(t)
         ha, dec, _ = topocentric.hadec()
-        ra, dec, _ = topocentric.radec()
+        ra, _, _ = topocentric.radec()
         alt, az, _ = topocentric.altaz()
         self.ha_sort = ha
         self.pos = {'ha':ha, 'dec':dec, 'ra':ra, 'alt':alt, 'az':az}
         return self.pos
 
-    def calc_moon_sep(self, site, time):
+    def calc_moon_sep(self, site, t):
         # ra, _ , dec = self.calc_pos(site, time)
         # sc = (ra, dec)
         eph = load('de421.bsp')
@@ -47,11 +44,11 @@ class Satellite:
         earth = eph['Earth']
 
         difference = self.sat - site
-        topocentric = difference.at(time)
+        topocentric = difference.at(t)
 
         # dif_moon = moon - site
         # top_moon = dif_moon.at(time)
-        m = earth.at(time).observe(moon)
+        m = earth.at(t).observe(moon)
 
         sep = topocentric.separation_from(m)
 
@@ -197,7 +194,7 @@ def corr_ha_dec_s(ha, dec):
         ha = ha.hours + Angle(hours=24).hours
         ha = Angle(hours=ha)
     ha_s = ha.hstr(format='{0}{1:02}{2:02}{3:02}.{4:0{5}}')
-    dec_s = dec.dstr(format='{0}{1:02}{2:02}{3:02}.{4:0{5}}')
+    dec_s = dec.dstr(format='{0:+>1}{1:02}{2:02}{3:02}.{4:0{5}}')
 
     return ha_s, dec_s
 

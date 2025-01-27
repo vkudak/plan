@@ -199,7 +199,7 @@ for ser in range(0, series):
                 T2 = T1 + timedelta(0, t_ser + t_move)  # 0 days and N seconds
                 # t_ser + t_move ---> time for frames capture + move telescope to next point
             if T1 > end_T:
-                print_park(T1, f, park_ra, park_dec)
+                print_park(f, T1, park_ra, park_dec, t_exp, exp_wait)
                 f.close()
                 print("#####\nFinish. Sunrise, h_sun=%i..." % h_sun)
                 sys.exit()

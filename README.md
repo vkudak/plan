@@ -1,5 +1,6 @@
-![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-raw/vkudak/lkd_site_flask)
-![GitHub Release](https://img.shields.io/github/release/vkudak/lkd_site_flask)
+![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-raw/vkudak/plan)
+![GitHub Issues or Pull Requests](https://img.shields.io/github/issues-closed/vkudak/plan)
+![GitHub Release](https://img.shields.io/github/release/vkudak/plan)
 
 ### Powered by:
 ![Python](https://img.shields.io/badge/python-3670A0?style=flat-square&logo=python&logoColor=ffdd54)

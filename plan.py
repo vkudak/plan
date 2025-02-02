@@ -16,6 +16,10 @@ import glob
 # print calc_T_twilight()
 # print "--------------------------"
 
+# Check Python version
+if sys.version_info[0] < 3 and sys.version_info[1] < 8:
+    raise Exception(f"You are using Python {sys.version}. Must be using Python 3.8 or higher")
+
 
 parser = argparse.ArgumentParser(description='Plan of GSO observation')
 parser.add_argument('-c', '--config', help='Specify config file', required=False)

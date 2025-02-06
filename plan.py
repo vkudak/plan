@@ -67,6 +67,7 @@ n_frames = conf_res["n_frames"]
 exp_wait = conf_res["exp_wait"]  # 20 #30  # interval between frames
 t_between_ser = conf_res["t_between_ser"]  # 30*10  # 60 * 5 seconds dead time between series
 min_track_speed = conf_res["min_track_speed"]
+min_sat_h = conf_res["min_sat_h"]
 
 park_ra = conf_res['park_ra']
 park_dec = conf_res['park_dec']
@@ -143,7 +144,7 @@ for sat in obj:
                 my_sat = Satellite(norad=sat, tle=tle,
                                     priority=0, sat=satellite, block=False,
                                     planed=[0] * series)
-                my_sat.calc_pos(site, start_T)
+                my_sat.calc_pos(site, start_T, eph)
                 geo_list.append(my_sat)
             except Exception as E:
                 print(E, E.args)
@@ -188,7 +189,7 @@ T1 = start_T
 for ser in range(0, series):
     print("##################---Ser #%i" % (ser + 1))
     for msat in geo_list:
-        msat.calc_pos(site, T1)
+        msat.calc_pos(site, T1, eph)
     geo_list.sort(key=lambda x: x.ha_sort.hours, reverse=False)  # sort satellites by HA  !!!!!!
 
 
@@ -217,17 +218,19 @@ for ser in range(0, series):
             # # print("here...", ha, geo_list[i].HA)
             # # ra, dec = geo_list[i].sat.ra, geo_list[i].sat.dec
 
-            geo_list[i].calc_pos(site, T1)
+            geo_list[i].calc_pos(site, T1, eph)
             # print(geo_list[i].norad, T1.utc_datetime().strftime("%Y-%m-%d %H:%M:%S.%f"),  geo_list[i].pos['dec'])
-            ra_speed, dec_speed = calc_geo_speed(geo_list[i], site, T1, flag=C)
+            ra_speed, dec_speed = calc_geo_speed(geo_list[i], site, T1, eph, flag=C)
 
             # !!!!!!!!!!!!!!!!!!!!!
 
-            moon_sep = geo_list[i].calc_moon_sep(site, T1)
+            moon_sep = geo_list[i].pos['m_sep']
+            # moon_sep = geo_list[i].calc_moon_sep(site, T1)
             # geo_list[i].calc_pos(site, T1)
 
-            if (geo_list[i].pos['alt'].degrees > 10) and (T1 < end_T) and (moon_sep.degrees > float(moon_dist)):
-                if geo_list[i].sat.at(T1).is_sunlit(eph):
+            if (geo_list[i].pos['alt'].degrees > min_sat_h) and (T1 < end_T) and (moon_sep.degrees > float(moon_dist)):
+                # if geo_list[i].sat.at(T1).is_sunlit(eph):
+                if geo_list[i].pos['sunlit']:
                     # geo_list[i].calc_pos(site, T1)
                     ha = geo_list[i].pos["ha"]
                     dec = geo_list[i].pos["dec"]
@@ -264,13 +267,13 @@ for ser in range(0, series):
                     x = 1
                     sat = geo_list[i]
                     found = False
-                    while not sat.sat.at(T1).is_sunlit(eph) or sat.planed[ser] == 1:
+                    while not sat.pos['sunlit'] or sat.planed[ser] == 1:
                         if i + x <= len(geo_list)-1:
                             sat = geo_list[i+x]
-                            pos = sat.calc_pos(site, T1)
+                            pos = sat.calc_pos(site, T1, eph)
                             ha = pos["ha"]
                             dec = pos["dec"]
-                            if sat.sat.at(T1).is_sunlit(eph):
+                            if sat.pos['sunlit']:
                                 found = True
                         else:
                             break
@@ -278,12 +281,12 @@ for ser in range(0, series):
 
                     if found:
                         if debug:
-                            f.write("# changed to %s \n" % sat.norad)
+                            f.write(f"# changed to {sat.norad} \n")
 
                         # geo_list[i].calc_pos(site, T1)
                         ha_s, dec_s = corr_ha_dec_s(ha, dec)
-                        print("Changing it to %s"% sat.norad)
-                        ra_speed, dec_speed = calc_geo_speed(sat, site, T1, flag=C)
+                        print(f"Changed to {sat.norad}")
+                        ra_speed, dec_speed = calc_geo_speed(sat, site, T1, eph, flag=C)
                         write_plan(
                             file=f,
                             tracking=tracking,
@@ -302,7 +305,7 @@ for ser in range(0, series):
                 if debug:
                     f.write("# skip satellite %s, h= %s, Moon sep=%s\n" %
                             (geo_list[i].norad, str(geo_list[i].pos['alt']), str(moon_sep)))
-                if geo_list[i].pos['alt'].degrees < 10:
+                if geo_list[i].pos['alt'].degrees < min_sat_h:
                     print("Skip satellite %s in series %i, because of small elevation - h=%s" %
                           (geo_list[i].norad, ser+1, geo_list[i].pos['alt'].dstr(format='{0:+>1}{1:02}:{2:02}:{3:02}')))
                 if moon_sep.degrees < float(moon_dist):
@@ -317,18 +320,17 @@ for ser in range(0, series):
                 # print("HERE NOW!!!!!!!!!!!!!!!!!!!")
                 for j in range(0, len(geo_list)):
                     # ha = geo_list[j].calc_pos(site, T1)['ha']
-                    if (geo_list[j].planed[ser] == 0) and (geo_list[j].sat.at(T1).is_sunlit(eph)) and \
-                            (geo_list[j].pos["alt"].degrees > 10) and (moon_sep.degrees < float(moon_dist)):
+                    if (geo_list[j].planed[ser] == 0) and (geo_list[j].pos['sunlit']) and \
+                            (geo_list[j].pos["alt"].degrees > min_sat_h) and (moon_sep.degrees < float(moon_dist)):
                         T1 = T2
                         T2 = T1 + timedelta(0, t_ser + t_move)
                         T1_s = T1.utc_datetime().strftime("%H%M%S")
                         T2_s = T2.utc_datetime().strftime("%H%M%S")
 
-                        geo_list[j].calc_pos(site, T1)
+                        geo_list[j].calc_pos(site, T1, eph)
                         ha_s, dec_s = corr_ha_dec_s(geo_list[j].pos["ha"], geo_list[j].pos["dec"])
-                        print("Satellite %s is out of eclipse, added to the end of series %i " %
-                              (geo_list[j].norad, ser + 1))
-                        ra_speed, dec_speed = calc_geo_speed(geo_list[i], site, T1, flag=C)
+                        print(f"Satellite {geo_list[j].norad} is out of eclipse, added to the end of series {ser + 1}")
+                        ra_speed, dec_speed = calc_geo_speed(geo_list[i], site, T1, eph, flag=C)
                         write_plan(
                             file=f,
                             tracking=tracking,
@@ -344,11 +346,11 @@ for ser in range(0, series):
                         geo_list[j].planed[ser] = 1
                         added = True
             ###
-            if (geo_list[i].pos["alt"].degrees > 10) and (moon_sep.degrees > float("10")) and (not added):
+            if (geo_list[i].pos["alt"].degrees > min_sat_h) and (moon_sep.degrees > float(moon_dist)) and (not added):
                 T1 = T2
             if added:
                 T1 = T2
 if park:
     print_park(f, T1, park_ra, park_dec, t_exp, exp_wait)
-print("#####\nFinish. %i series calculated." % series)
+print(f"#####\nFinish. {series} series calculated.")
 f.close()

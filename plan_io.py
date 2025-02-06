@@ -24,6 +24,7 @@ def read_config(conf_file):
             c_site_elev = config.getfloat('site', 'site_elev')
 
             c_plan_type = config.get("options", 'plan_type', fallback="HA")
+            c_min_sat_h = config.getfloat('options', 'min_sat_h', fallback=10)
             c_h_sun = config.getfloat('options', 'h_sun', fallback=-12)
             c_series = config.getint('options', 'series', fallback=7)
             c_t_move = config.getint('options', 't_move', fallback=40)
@@ -47,6 +48,7 @@ def read_config(conf_file):
                     'site_lon': c_site_lon,
                     'site_elev': c_site_elev,
                     'plan_type': c_plan_type,
+                    'min_sat_h': c_min_sat_h,
                     'h_sun': c_h_sun,
                     'series': c_series,
                     't_move': c_t_move,
@@ -83,15 +85,27 @@ class Satellite:
         self.block = block
         self.planed = planed  # []  # [planed in ser like [1, 0, 0]]
 
-    def calc_pos(self, site, t):
+    def calc_pos(self, site, t, eph):
         # ha, dec,_ = self.sat.at(t).hadec()
         difference = self.sat - site
         topocentric = difference.at(t)
+
         ha, dec, _ = topocentric.hadec()
         ra, _, _ = topocentric.radec()
         alt, az, _ = topocentric.altaz()
         self.ha_sort = ha
-        self.pos = {'ha':ha, 'dec':dec, 'ra':ra, 'alt':alt, 'az':az}
+
+        # calc Moon separation
+        # eph = load('de421.bsp')
+        moon = eph['Moon']
+        earth = eph['Earth']
+        m = earth.at(t).observe(moon)
+        sep = topocentric.separation_from(m)
+
+        # is in sunlight
+        sunlit = self.sat.at(t).is_sunlit(eph)
+
+        self.pos = {'ha':ha, 'dec':dec, 'ra':ra, 'alt':alt, 'az':az, 'm_sep':sep, 'sunlit':sunlit}
         return self.pos
 
     def calc_sat_phase(self, site, t):
@@ -353,16 +367,18 @@ def moon_phase():
 #     return float(math.degrees(deg))
 
 
-def calc_geo_speed(msat, site, t0, flag):
+def calc_geo_speed(msat, site, t0, eph, flag):
     # Deren.date = T1.strftime("%Y/%m/%d %H:%M:%S")
-    pos1 = msat.calc_pos(site, t0)
+    pos1 = msat.calc_pos(site, t0, eph)
     ha1, ra1, dec1 = pos1["ha"], pos1["ra"], pos1["dec"]
 
     n_sec = 60
     # moment 2
     t2 = t0 + timedelta(seconds=n_sec)
-    pos2 = msat.calc_pos(site, t2)
+    pos2 = msat.calc_pos(site, t2, eph)
     ha2, ra2, dec2 = pos2["ha"], pos2["ra"], pos2["dec"]
+
+    msat.calc_pos(site, t0, eph) # set t0 position
 
     ra_speed = (ra2._degrees - ra1._degrees) * 60 * 60
     ha_speed = (ha2._degrees - ha1._degrees) * 60 * 60

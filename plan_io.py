@@ -86,26 +86,54 @@ class Satellite:
         self.planed = planed  # []  # [planed in ser like [1, 0, 0]]
 
     def calc_pos(self, site, t, eph):
-        # ha, dec,_ = self.sat.at(t).hadec()
+        moon = eph['Moon']
+        earth = eph['Earth']
+
+        # ICRF
         difference = self.sat - site
         topocentric = difference.at(t)
 
-        ha, dec, _ = topocentric.hadec()
-        ra, _, _ = topocentric.radec()
+        # Barycenter
+        # ssb_bluffton = earth + site
+        # ssb_satellite = earth + self.sat
+        # topocentric = ssb_bluffton.at(t).observe(ssb_satellite).apparent()
+        # # topocentric = ssb_bluffton.at(t).observe(ssb_satellite)
+
+        ha, _, _ = topocentric.hadec()
+        ra, dec, _ = topocentric.radec(epoch='date')
         alt, az, _ = topocentric.altaz()
         self.ha_sort = ha
 
         # calc Moon separation
         # eph = load('de421.bsp')
-        moon = eph['Moon']
-        earth = eph['Earth']
+
         m = earth.at(t).observe(moon)
         sep = topocentric.separation_from(m)
 
         # is in sunlight
         sunlit = self.sat.at(t).is_sunlit(eph)
 
-        self.pos = {'ha':ha, 'dec':dec, 'ra':ra, 'alt':alt, 'az':az, 'm_sep':sep, 'sunlit':sunlit}
+        # Calc geo track speed
+        n_sec = 60
+        t2 = t + timedelta(seconds=n_sec) # moment 2
+        topocentric2 = difference.at(t2)
+        # topocentric2 = ssb_bluffton.at(t2).observe(ssb_satellite).apparent()
+        # topocentric2 = ssb_bluffton.at(t2).observe(ssb_satellite)
+        ha2, _, _ = topocentric2.hadec()
+        ra2, dec2, _ = topocentric2.radec(epoch='date')
+
+        # ha1, ra1, dec1 = ha, ra, dec
+
+        ra_speed = (ra2._degrees - ra._degrees) * 60 * 60
+        ha_speed = (ha2._degrees - ha._degrees) * 60 * 60
+        dec_speed = (dec2.degrees - dec.degrees) * 60 * 60
+
+        hadec_speed = (ha_speed / n_sec, dec_speed / n_sec)
+        radec_speed = (ra_speed / n_sec, dec_speed / n_sec)
+
+        self.pos = {'ha':ha, 'dec':dec, 'ra':ra, 'alt':alt, 'az':az, 'm_sep':sep, 'sunlit':sunlit,
+                    'hadec_speed':hadec_speed, 'radec_speed':radec_speed
+                    }
         return self.pos
 
     def calc_sat_phase(self, site, t):

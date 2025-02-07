@@ -220,7 +220,11 @@ for ser in range(0, series):
 
             geo_list[i].calc_pos(site, T1, eph)
             # print(geo_list[i].norad, T1.utc_datetime().strftime("%Y-%m-%d %H:%M:%S.%f"),  geo_list[i].pos['dec'])
-            ra_speed, dec_speed = calc_geo_speed(geo_list[i], site, T1, eph, flag=C)
+            # ra_speed, dec_speed = calc_geo_speed(geo_list[i], site, T1, eph, flag=C)
+            if flag == 'HA':
+                ra_speed,dec_speed = geo_list[i].pos['hadec_speed']
+            else:
+                ra_speed,dec_speed = geo_list[i].pos['radec_speed']
 
             # !!!!!!!!!!!!!!!!!!!!!
 
@@ -286,14 +290,19 @@ for ser in range(0, series):
                         # geo_list[i].calc_pos(site, T1)
                         ha_s, dec_s = corr_ha_dec_s(ha, dec)
                         print(f"Changed to {sat.norad}")
-                        ra_speed, dec_speed = calc_geo_speed(sat, site, T1, eph, flag=C)
+                        # ra_speed, dec_speed = calc_geo_speed(sat, site, T1, eph, flag=C)
+                        if flag == 'HA':
+                            ra_speed, dec_speed = geo_list[i].pos['hadec_speed']
+                        else:
+                            ra_speed, dec_speed = geo_list[i].pos['radec_speed']
+
                         write_plan(
                             file=f,
                             tracking=tracking,
                             min_track_speed=min_track_speed,
                             ra_speed=ra_speed,
                             dec_speed=dec_speed,
-                            geo=geo_list[i],
+                            geo=sat, # geo_list[i + x - 1],
                             flag=flag,
                             T1_s=T1_s,
                             T2_s=T2_s,
@@ -330,7 +339,12 @@ for ser in range(0, series):
                         geo_list[j].calc_pos(site, T1, eph)
                         ha_s, dec_s = corr_ha_dec_s(geo_list[j].pos["ha"], geo_list[j].pos["dec"])
                         print(f"Satellite {geo_list[j].norad} is out of eclipse, added to the end of series {ser + 1}")
-                        ra_speed, dec_speed = calc_geo_speed(geo_list[i], site, T1, eph, flag=C)
+                        # ra_speed, dec_speed = calc_geo_speed(geo_list[i], site, T1, eph, flag=C)
+                        if flag == 'HA':
+                            ra_speed, dec_speed = geo_list[i].pos['hadec_speed']
+                        else:
+                            ra_speed, dec_speed = geo_list[i].pos['radec_speed']
+
                         write_plan(
                             file=f,
                             tracking=tracking,

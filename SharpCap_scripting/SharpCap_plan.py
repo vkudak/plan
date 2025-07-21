@@ -1,6 +1,11 @@
 """
 Run this script in SharpCap Pro to start calculated plan.
 Connect to camera and telescope manually before running the script
+
+Якщо хочеш робити нестандартне ведення (наприклад, для супутників), треба:
+Підключитися до монтування через EQMOD драйвер замість SynScan. EQMOD драйвер працює з тим самим AZ-EQ6 Pro, але має розширений API.
+В EQMOD можливо задавати швидкості ведення, коригувати трекінг в реальному часі.
+SharpCap, підключений до EQMOD через ASCOM, отримає доступ до властивостей RightAscensionRate і DeclinationRate або відповідних команд.
 """
 
 import time
@@ -68,7 +73,7 @@ def parse_plan(file_path):
 # ---------------------- Time helpers ----------------------
 def get_lst(longitude):
     now = datetime.now(timezone.utc)
-    days = (now - datetime(now.year, 1, 1)).total_seconds() / 86400.0
+    days = (now - datetime(now.year, 1, 1, tzinfo=timezone.utc)).total_seconds() / 86400.0
     gmst = 6.697374558 + 0.06570982441908 * days + 1.00273790935 * now.hour + now.minute / 60.0 + now.second / 3600.0
     lst = (gmst * 15 + longitude) % 360
     return lst / 15.0  # in hours
@@ -96,18 +101,21 @@ def perform_capture(camera, mount, target):
 
     log(f"[INFO] Slewed to RA={ra:.4f}, DEC={dec:.4f}")
 
+    # target tracking can work with EQMOD only
     if abs(ha_rate) > 0.0 or abs(dec_rate) > 0.0:
         # Not TESTED !!!
         log(f"Setting custom tracking rates: dRA={ha_rate:.3f}h/s, dDEC={dec_rate:.3f}°/s")
         mount.Tracking = False
-        mount.RightAscensionRate = ha_rate * 15.0  # години/секунду в градуси/секунду
-        mount.DeclinationRate = dec_rate
+        # Якщо драйвер підтримує, можливо так:
+        try:
+            mount.RightAscensionRate = ha_rate * 15.0  # години/секунду в градуси/секунду
+            mount.DeclinationRate = dec_rate
+        except AttributeError:
+            log("[WARN] Custom tracking rates not supported by this mount interface. Need EQMOD")
         mount.Tracking = True
     else:
-        log("Using normal tracking mode")
-        # mount.RightAscensionRate = 0.0
-        # mount.DeclinationRate = 0.0
-        mount.Tracking = True
+        log("Using zero tracking mode")
+        mount.Tracking = False
 
     # Встановлення експозиції
     camera.Controls.Exposure.Value = exp
@@ -130,42 +138,39 @@ def perform_capture(camera, mount, target):
     log(f"[INFO] Capture complete for {obj_id}")
 
 # ---------------------- Main Script ----------------------
-targets = parse_plan(plan_file_path)
-completed_targets = set()
+try:
+    targets = parse_plan(plan_file_path)
+    targets.sort(key=lambda t: t[5])  # сортувати за часом початку
 
-camera = SharpCap.SelectedCamera
-mount = SharpCap.Mounts.SelectedMount.AscomMount
+    # completed_targets = set()
 
-now = datetime.now(timezone.utc).time()
+    camera = SharpCap.SelectedCamera
+    mount = SharpCap.Mounts.SelectedMount.AscomMount
 
-# Перевірка, чи всі цілі вже у минулому
-# target[6] = t_end
-if all(target[6] < now for target in targets):
-    log("[INFO] All targets are in the past. Exiting.")
-    log_file.close()
-    exit(0)
-
-# Отримуємо останню ціль за часом
-latest_target_idx = max(range(len(targets)), key=lambda i: targets[i][6])  # індекс цілі з найпізнішим t_stop
-
-while True:
     now = datetime.now(timezone.utc).time()
 
-    for idx, target in enumerate(targets):
-        obj_id, ha, dec, t_start, t_stop, count, exp, pause = target
+    # Перевірка, чи всі цілі вже у минулому
+    # target[6] --- t_end
+    if all(target[6] < now for target in targets):
+        log("[INFO] All targets are in the past. Exiting.")
+        log_file.close()
+        exit(0)
 
-        if idx in completed_targets:
-            continue
+    # Отримуємо останню ціль за часом
+    latest_target_idx = max(range(len(targets)), key=lambda i: targets[i][6])  # індекс цілі з найпізнішим t_stop
 
-        if t_start <= now <= t_stop:
-            perform_capture(camera, mount, target)
-            completed_targets.add(idx)
-            break  # не перевіряємо інші цілі під час зйомки
+    while True:
+        now = datetime.now(timezone.utc).time()
 
-    if len(completed_targets) == len(targets):
-        log("[INFO] All targets observed. Exiting.")
-        break
+        for target in targets:
+            obj_id, _, _, _, _, t_start, t_stop,  _, _, _ = target
 
-    time.sleep(0.5)
+            if t_start <= now <= t_stop:
+                perform_capture(camera, mount, target)
+                # completed_targets.add(obj_id)
+                break
 
-log_file.close()
+        time.sleep(0.5)
+
+finally:
+    log_file.close()

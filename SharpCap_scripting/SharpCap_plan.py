@@ -10,7 +10,7 @@ import configparser
 
 # ---------------------- Load Config ----------------------
 config = configparser.ConfigParser()
-config.read(os.path.join(os.path.dirname(__file__), "config.ini"))
+config.read(os.path.join(os.path.dirname(__file__), "config_SharpCap_plan.ini"))
 
 observer_longitude = float(config["observer"]["longitude"])
 plan_file_path = config["files"]["plan_file"]

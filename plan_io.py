@@ -1,10 +1,13 @@
 import glob, os, sys
+import math
 from datetime import datetime, timedelta
 import configparser
 
 from skyfield import almanac
-from skyfield.api import load, utc
+from skyfield.api import load as skyload
+from skyfield.api import utc
 from skyfield.units import Angle
+from astropy import units as u
 
 
 def read_config(conf_file):
@@ -74,6 +77,12 @@ def read_config(conf_file):
         sys.exit()
 
 
+def angle_diff_deg(a_deg, b_deg):
+    """Difference a - b in degrees in range (-180, +180]."""
+    d = a_deg - b_deg
+    return (d + 180.0) % 360.0 - 180.0
+
+
 class Satellite:
     def __init__(self, norad, priority, tle, sat, block, planed):
         self.norad = norad
@@ -100,7 +109,7 @@ class Satellite:
         # # topocentric = ssb_bluffton.at(t).observe(ssb_satellite)
 
         ha, _, _ = topocentric.hadec()
-        ra, dec, _ = topocentric.radec(epoch='date')
+        ra, dec, _ = topocentric.radec() #(epoch='date')
         alt, az, _ = topocentric.altaz()
         self.ha_sort = ha
 
@@ -115,8 +124,13 @@ class Satellite:
 
         # Calc geo track speed
         n_sec = 60
-        t2 = t + timedelta(seconds=n_sec) # moment 2
+        # коректний спосіб отримати Time + delta — через timescale.from_datetime
+        ts = skyload.timescale()  # або load.timescale(), залежно від імпорту
+        t2 = ts.from_datetime(t.utc_datetime() + timedelta(seconds=n_sec))
         topocentric2 = difference.at(t2)
+        # t2 = t + timedelta(seconds=n_sec) # moment 2
+        # topocentric2 = difference.at(t2)
+
         # topocentric2 = ssb_bluffton.at(t2).observe(ssb_satellite).apparent()
         # topocentric2 = ssb_bluffton.at(t2).observe(ssb_satellite)
         ha2, _, _ = topocentric2.hadec()
@@ -124,12 +138,27 @@ class Satellite:
 
         # ha1, ra1, dec1 = ha, ra, dec
 
-        ra_speed = (ra2._degrees - ra._degrees) * 60 * 60
-        ha_speed = (ha2._degrees - ha._degrees) * 60 * 60
-        dec_speed = (dec2.degrees - dec.degrees) * 60 * 60
+        # RA (degrees) difference, з урахуванням wrap-around:
+        ra_delta_deg = angle_diff_deg(ra2._degrees, ra._degrees)
+        ha_delta_deg = angle_diff_deg(ha2._degrees, ha._degrees)
+        dec_delta_deg = (dec2.degrees - dec.degrees)  # dec не має wrap на 360
 
-        hadec_speed = (ha_speed / n_sec, dec_speed / n_sec)
-        radec_speed = (ra_speed / n_sec, dec_speed / n_sec)
+        # Конвертація в arcsec за n_sec інтервал:
+        # Додатково: при перетворенні зміни RA в фактичну кутову зміну на небі враховуємо cos(dec)
+        # (тобто projection along RA circle).
+        ra_arcsec = ra_delta_deg * 3600.0 * math.cos(math.radians(dec.degrees))
+        ha_arcsec = ha_delta_deg * 3600.0
+        dec_arcsec = dec_delta_deg * 3600.0
+
+        hadec_speed = (ha_arcsec / n_sec, dec_arcsec / n_sec)
+        radec_speed = (ra_arcsec / n_sec, dec_arcsec / n_sec)
+
+        # ra_speed = (ra2._degrees - ra._degrees) * 60 * 60
+        # ha_speed = (ha2._degrees - ha._degrees) * 60 * 60
+        # dec_speed = (dec2.degrees - dec.degrees) * 60 * 60
+
+        # hadec_speed = (ha_speed / n_sec, dec_speed / n_sec)
+        # radec_speed = (ra_speed / n_sec, dec_speed / n_sec)
 
         self.pos = {'ha':ha, 'dec':dec, 'ra':ra, 'alt':alt, 'az':az, 'm_sep':sep, 'sunlit':sunlit,
                     'hadec_speed':hadec_speed, 'radec_speed':radec_speed
@@ -139,12 +168,12 @@ class Satellite:
     def calc_sat_phase(self, site, t):
         """
         # https://github.com/skyfielders/python-skyfield/discussions/607
-        Calculate phase angle of Satellite
+        Calculate a phase angle of Satellite
         site: Observation point load.wgs84() object
         t: Time
         return: Satellite phase angle
         """
-        eph = load('de421.bsp')
+        eph = skyload('de421.bsp')
         earth = eph['earth']
         sun = eph['sun']
 
@@ -163,7 +192,7 @@ class Satellite:
     def calc_moon_sep(self, site, t):
         # ra, _ , dec = self.calc_pos(site, time)
         # sc = (ra, dec)
-        eph = load('de421.bsp')
+        eph = skyload('de421.bsp')
         moon = eph['Moon']
         earth = eph['Earth']
 
@@ -205,8 +234,8 @@ def calc_t_twilight(site, h_sun=-12):
     site: observational site. Create by api.Topos(lat, lon, elevation_m=elv) or api.wgs84(lat, lon, elevation_m=elv)
     h_sun: elevation of Sun below horizon. Default is -12 degrees.
     """
-    ts = load.timescale()
-    eph = load('de421.bsp')
+    ts = skyload.timescale()
+    eph = skyload('de421.bsp')
     observer = eph['Earth'] + site
 
     now = datetime.now()
@@ -367,12 +396,12 @@ def moon_phase():
     """
     Get Moon phase and illumination percents for NOW
     """
-    ts = load.timescale()
+    ts = skyload.timescale()
     now = datetime.now()
     now = now.replace(tzinfo=utc)
     t = ts.from_datetime(now)
 
-    eph = load('de421.bsp')
+    eph = skyload('de421.bsp')
     sun, moon, earth = eph['sun'], eph['moon'], eph['earth']
 
     e = earth.at(t)
@@ -402,22 +431,32 @@ def calc_geo_speed(msat, site, t0, eph, flag):
 
     n_sec = 60
     # moment 2
-    t2 = t0 + timedelta(seconds=n_sec)
+    ts = skyload.timescale()  # або load.timescale(), залежно від імпорту
+    t2 = ts.from_datetime(t0.utc_datetime() + timedelta(seconds=n_sec))
+    # t2 = t0 + timedelta(seconds=n_sec)
     pos2 = msat.calc_pos(site, t2, eph)
     ha2, ra2, dec2 = pos2["ha"], pos2["ra"], pos2["dec"]
 
     msat.calc_pos(site, t0, eph) # set t0 position
 
-    ra_speed = (ra2._degrees - ra1._degrees) * 60 * 60
-    ha_speed = (ha2._degrees - ha1._degrees) * 60 * 60
-    dec_speed = (dec2.degrees - dec1.degrees) * 60 * 60
+    # ra_speed = (ra2._degrees - ra1._degrees) * 60 * 60
+    # ha_speed = (ha2._degrees - ha1._degrees) * 60 * 60
+    # dec_speed = (dec2.degrees - dec1.degrees) * 60 * 60
+
+    ra_delta_deg = angle_diff_deg(ra2.degrees, ra1.degrees)
+    ha_delta_deg = angle_diff_deg(ha2.degrees, ha1.degrees)
+    dec_delta_deg = dec2.degrees - dec1.degrees
+
+    ra_arcsec = ra_delta_deg * 3600.0 * math.cos(math.radians(dec1.degrees))
+    ha_arcsec = ha_delta_deg * 3600.0
+    dec_arcsec = dec_delta_deg * 3600.0
 
     if flag == "HA":
         # ha_speed = (ha2 - ha) #/ 100
-        return ha_speed / n_sec, dec_speed / n_sec
+        return ha_arcsec / n_sec, dec_arcsec / n_sec
     else:
         # ra_speed = (ra2 - ra) #/ 100
-        return ra_speed / n_sec, dec_speed / n_sec
+        return ra_arcsec / n_sec, dec_arcsec / n_sec
 
 
 def write_plan(file, tracking, min_track_speed, ra_speed, dec_speed, geo, flag, T1_s, T2_s, str_v_plan):

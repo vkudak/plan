@@ -1,6 +1,6 @@
 import argparse
 
-from skyfield.api import EarthSatellite, wgs84
+from skyfield.api import EarthSatellite, wgs84, load
 
 from plan_io import *
 import glob
@@ -341,9 +341,9 @@ for ser in range(0, series):
                         print(f"Satellite {geo_list[j].norad} is out of eclipse, added to the end of series {ser + 1}")
                         # ra_speed, dec_speed = calc_geo_speed(geo_list[i], site, T1, eph, flag=C)
                         if flag == 'HA':
-                            ra_speed, dec_speed = geo_list[i].pos['hadec_speed']
+                            ra_speed, dec_speed = geo_list[j].pos['hadec_speed']
                         else:
-                            ra_speed, dec_speed = geo_list[i].pos['radec_speed']
+                            ra_speed, dec_speed = geo_list[j].pos['radec_speed']
 
                         write_plan(
                             file=f,
@@ -351,7 +351,7 @@ for ser in range(0, series):
                             min_track_speed=min_track_speed,
                             ra_speed=ra_speed,
                             dec_speed=dec_speed,
-                            geo=geo_list[i],
+                            geo=geo_list[j],
                             flag=flag,
                             T1_s=T1_s,
                             T2_s=T2_s,

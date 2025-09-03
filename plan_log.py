@@ -154,6 +154,7 @@ def main():
                     geo_list.append(my_sat)
                 except Exception as E:
                     logger.warning(f"Skip satellite {sat}, TLE too old or error: {E}")
+                    print(f"Skip satellite {sat}, TLE too old or error: {E}")
                     bad_sat.append(sat)
 
     for bad in bad_sat:
@@ -183,6 +184,7 @@ def main():
 
     for ser in range(series):
         logger.info(f"##################--- Series #{ser + 1}")
+        print(f"Series #{ser + 1}")
 
         for msat in geo_list:
             msat.calc_pos(site, T1, eph)
@@ -220,7 +222,8 @@ def main():
 
                 moon_sep = sat.pos['m_sep']
 
-                if (sat.pos['alt'].degrees > min_sat_h) and (T1 < end_T) and (moon_sep.degrees > float(moon_dist)):
+                if ((sat.pos['alt'].degrees > min_sat_h) and (T1 < end_T) and
+                        (moon_sep.degrees > float(moon_dist)) ):
                     if sat.pos['sunlit']:
                         write_plan(
                             file=f,
@@ -284,7 +287,10 @@ def main():
                 added = False
                 if i == len(geo_list) - 1:
                     for j, sat_j in enumerate(geo_list):
-                        if (sat_j.planed[ser] == 0) and sat_j.pos['sunlit'] and (sat_j.pos["alt"].degrees > min_sat_h) and (moon_sep.degrees > float(moon_dist)):
+                        if ((sat_j.planed[ser] == 0) and
+                                sat_j.pos['sunlit'] and
+                                (sat_j.pos["alt"].degrees > min_sat_h) and
+                                (sat_j.pos['m_sep'].degrees > float(moon_dist))):
                             T1 = T2
                             T2 = T1 + timedelta(seconds=t_ser + t_move)
                             T1_s = T1.utc_datetime().strftime("%H%M%S")

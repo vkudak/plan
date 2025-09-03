@@ -1,4 +1,5 @@
 import glob, os, sys
+import numpy as np
 import math
 from datetime import datetime, timedelta
 import configparser
@@ -8,6 +9,9 @@ from skyfield.api import load as skyload
 from skyfield.api import utc
 from skyfield.units import Angle
 from astropy import units as u
+
+R_EARTH_KM = 6378.1366
+R_SUN_KM   = 695700.0
 
 
 def read_config(conf_file):
@@ -109,7 +113,7 @@ class Satellite:
         # # topocentric = ssb_bluffton.at(t).observe(ssb_satellite)
 
         ha, _, _ = topocentric.hadec()
-        ra, dec, _ = topocentric.radec() #(epoch='date')
+        ra, dec, _ = topocentric.radec(epoch='date')
         alt, az, _ = topocentric.altaz()
         self.ha_sort = ha
 
@@ -120,6 +124,7 @@ class Satellite:
         sep = topocentric.separation_from(m)
 
         # is in sunlight
+        # TODO: change to new method "sunlit_fraction" ?
         sunlit = self.sat.at(t).is_sunlit(eph)
 
         # Calc geo track speed
@@ -212,6 +217,58 @@ class Satellite:
 
         return sep
 
+
+    def sunlit_fraction(self, time, eph, atmosphere_km=0.0):
+        """
+        Обчислює частку видимого Сонця (0..1) для даного моменту часу.
+        Метод sunlit_fraction зараз обчислює, яку частину диска Сонця видно з точки супутника,
+        тобто 0 = Сонце повністю закрите Землею (umbra), 1 = Сонце повністю видно,
+        а значення між 0 і 1 — часткова тінь (penumbra).
+
+        time: skyfield Time
+        eph: skyfield ephemeris (наприклад, load('de421.bsp'))
+        atmosphere_km: ефективне збільшення радіуса Землі для атмосфери [км]
+        """
+        sat_pos = self.sat.at(time).position.km
+        sun_pos = eph['sun'].at(time).position.km
+
+        r_sat = np.linalg.norm(sat_pos)
+        r_sun = np.linalg.norm(sun_pos)
+        d = np.linalg.norm(sun_pos - sat_pos)
+
+        alpha = np.arcsin(R_SUN_KM / d)  # кутовий радіус Сонця
+        beta = np.arcsin((R_EARTH_KM + atmosphere_km) / r_sat)  # кутовий радіус Землі
+
+        cos_theta = np.dot(-sat_pos, sun_pos) / (r_sat * r_sun)
+        cos_theta = np.clip(cos_theta, -1.0, 1.0)
+        theta = np.arccos(cos_theta)
+
+        if theta <= beta - alpha:
+            return 0.0  # повна тінь (umbra)
+        elif theta >= beta + alpha:
+            return 1.0  # повне освітлення
+        else:
+            # часткове перекриття (penumbra)
+            R_sun_ang = alpha
+            R_earth_ang = beta
+            d_ang = theta
+
+            part1 = R_sun_ang ** 2 * np.arccos(
+                (d_ang ** 2 + R_sun_ang ** 2 - R_earth_ang ** 2) / (2 * d_ang * R_sun_ang)
+            )
+            part2 = R_earth_ang ** 2 * np.arccos(
+                (d_ang ** 2 + R_earth_ang ** 2 - R_sun_ang ** 2) / (2 * d_ang * R_earth_ang)
+            )
+            part3 = 0.5 * np.sqrt(
+                max(0.0, (-d_ang + R_sun_ang + R_earth_ang) *
+                    (d_ang + R_sun_ang - R_earth_ang) *
+                    (d_ang - R_sun_ang + R_earth_ang) *
+                    (d_ang + R_sun_ang + R_earth_ang))
+            )
+            overlap_area = part1 + part2 - part3
+            sun_area = np.pi * R_sun_ang ** 2
+            fraction_visible = 1.0 - overlap_area / sun_area
+            return float(np.clip(fraction_visible, 0.0, 1.0))
 
 def fix_checksum(line):
     """Return a new copy of the TLE `line`, with the correct checksum appended.

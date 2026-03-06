@@ -56,17 +56,26 @@ list_my = read_planed_objects(objects_file)
 
 max_mm = 7 # max mean motion
 
+miss = []
 for sat in tqdm(list_my):
 	try:
 		res = cl.get_tle(sat)
 
-		mean_motion = float(res[1].split()[-2])
-		if mean_motion < max_mm:
-			fr.write(res[0]["satname"] + "\n")
-			ll = res[1].split('\r\n')
-			fr.write(ll[0] + "\n" + ll[1] + "\n")
+		if res[1] != '':
+			mean_motion = float(res[1].split()[-2])
+			if mean_motion < max_mm:
+				fr.write(res[0]["satname"] + "\n")
+				ll = res[1].split('\r\n')
+				fr.write(ll[0] + "\n" + ll[1] + "\n")
+			else:
+				print(f'Mean motion too big, skipping {sat}')
+		else:
+			miss.append(sat)
 	except Exception as e:
 		print('Error while retrieving TLE for ' + str(sat))
 		# print(repr(e))
 		pass
+
+if miss:
+	print(f'No TLE for object {miss}')
 fr.close()

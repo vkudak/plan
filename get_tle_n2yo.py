@@ -9,6 +9,31 @@ from tqdm import tqdm
 
 from plan_io import read_planed_objects
 
+def get_from_satcheck(id):
+	import requests
+	import json
+	from astropy.time import Time
+	
+	t = Time.now()
+	# print(f"Астрономічна JD: {t.jd}")
+	
+	url = 'https://satchecker.cps.iau.org/tools/get-nearest-tle/'
+	params = {'id': str(id),
+	          'id_type': 'catalog',
+	          'epoch': str(t.jd) #'2461105'
+	        }
+	
+	r = requests.get(url, params=params)
+	# print(json.dumps(r.json(), indent=4))
+	r = r.json()[0]
+	if r['tle_data']: 
+	    return(r['tle_data'][0]['satellite_name'], 
+			   r['tle_data'][0]['tle_line1'],
+	           r['tle_data'][0]['tle_line2']
+			  )
+	else:
+	    return None
+
 
 # list_my = [
 # 	11804,

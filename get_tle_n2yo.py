@@ -6,16 +6,13 @@ import sys
 from n2yo import n2yo
 import datetime
 from tqdm import tqdm
-
+import requests
+import json
+from astropy.time import Time
 from plan_io import read_planed_objects
 
-def get_from_satcheck(id):
-	import requests
-	import json
-	from astropy.time import Time
-	
+def get_from_satcheck(id, fr, max_mean_motion=99999):
 	t = Time.now()
-	# print(f"Астрономічна JD: {t.jd}")
 	
 	url = 'https://satchecker.cps.iau.org/tools/get-nearest-tle/'
 	params = {'id': str(id),
@@ -26,11 +23,17 @@ def get_from_satcheck(id):
 	r = requests.get(url, params=params)
 	# print(json.dumps(r.json(), indent=4))
 	r = r.json()[0]
-	if r['tle_data']: 
-	    return(r['tle_data'][0]['satellite_name'], 
-			   r['tle_data'][0]['tle_line1'],
-	           r['tle_data'][0]['tle_line2']
-			  )
+	
+	if r['tle_data'] and (float(r['tle_data'][0]['tle_line1'].split()[-2]) < max_mean_motion): 
+		fr.write(r['tle_data'][0]['satellite_name'] + "\n" + 
+				 r['tle_data'][0]['tle_line1'] + "\n" + 
+				 r['tle_data'][0]['tle_line2'] + "\n"
+				)
+		return 'found'
+	    # return(r['tle_data'][0]['satellite_name'], 
+			  #  r['tle_data'][0]['tle_line1'],
+	    #        r['tle_data'][0]['tle_line2']
+			  # )
 	else:
 	    return None
 
@@ -95,7 +98,9 @@ for sat in tqdm(list_my):
 			else:
 				print(f'Mean motion too big, skipping {sat}')
 		else:
-			miss.append(sat)
+			rr = get_from_satcheck(sat, fr, max_mm)
+			if rr is None
+				miss.append(sat)
 	except Exception as e:
 		print('Error while retrieving TLE for ' + str(sat))
 		# print(repr(e))
